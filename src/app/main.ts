@@ -1,4 +1,4 @@
-import { Events } from "discord.js";
+import { ActivityType, Events } from "discord.js";
 import { loadConfig } from "../platform/config/env";
 import { createDiscordClient } from "../platform/discord/client";
 import { registerBotModules } from "../platform/discord/registerBotModules";
@@ -17,6 +17,9 @@ async function main(): Promise<void> {
   registerBotModules(client, modules, logger);
 
   client.once(Events.ClientReady, async (readyClient) => {
+    readyClient.user.setActivity(config.botActivityName, {
+      type: ActivityType.Playing
+    });
     logger.info({ user: readyClient.user.tag }, "Discord bot is ready");
     await markHealthy(config.healthcheckFile);
   });
