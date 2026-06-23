@@ -43,8 +43,8 @@ describe("JoinBannerService", () => {
     const metadata = await sharp(output).metadata();
 
     expect(output.toString("ascii", 1, 4)).toBe("PNG");
-    expect(metadata.width).toBe(2172);
-    expect(metadata.height).toBe(724);
+    expect(metadata.width).toBe(1100);
+    expect(metadata.height).toBe(500);
   });
 
   it("keeps text rows separated and inside their max widths", () => {
@@ -55,21 +55,19 @@ describe("JoinBannerService", () => {
         guildName: "Kakuzato Server With A Long Guild Name",
         memberCount: 12345
       },
-      2172,
-      724,
-      Math.round(724 * 0.27),
-      Math.round(724 * 0.13)
+      1100,
+      500,
+      Math.round(500 * 0.5),
+      Math.round(500 * 0.1)
     );
 
-    expect(layout.name.y - layout.title.y).toBeGreaterThanOrEqual(
-      Math.round(layout.title.fontSize * 1.15)
+    expect(layout.footer.y - layout.headline.y).toBeGreaterThanOrEqual(
+      Math.round(layout.headline.fontSize * 1.15)
     );
-    expect(layout.footer.y - layout.name.y).toBeGreaterThanOrEqual(
-      Math.round(layout.name.fontSize * 1.1)
+    expect(estimateTextWidth(layout.headline.text, layout.headline.fontSize)).toBeLessThanOrEqual(
+      layout.headline.maxWidth
     );
-    expect(estimateTextWidth(layout.name.text, layout.name.fontSize)).toBeLessThanOrEqual(
-      layout.name.maxWidth
-    );
+    expect(layout.footer.y).toBeLessThan(500 - 35);
   });
 
   it("falls back to a generated avatar when avatar fetching times out", async () => {
@@ -93,8 +91,8 @@ describe("JoinBannerService", () => {
     });
     const metadata = await sharp(output).metadata();
 
-    expect(metadata.width).toBe(2172);
-    expect(metadata.height).toBe(724);
+    expect(metadata.width).toBe(1100);
+    expect(metadata.height).toBe(500);
   });
 
   it.each([
@@ -138,8 +136,8 @@ describe("JoinBannerService", () => {
       await mkdir(sampleOutputDir, { recursive: true });
       await writeFile(path.join(sampleOutputDir, fileName), output);
 
-      expect(metadata.width).toBe(2172);
-      expect(metadata.height).toBe(724);
+      expect(metadata.width).toBe(1100);
+      expect(metadata.height).toBe(500);
     }
   );
 });

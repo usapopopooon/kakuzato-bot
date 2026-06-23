@@ -33,12 +33,12 @@ type FittedText = {
 };
 
 export type JoinBannerTextLayout = {
-  title: FittedText & { y: number };
-  name: FittedText & { y: number };
+  headline: FittedText & { y: number };
   footer: FittedText & { y: number };
 };
 
-const bannerFontFamily = "YOzCFb, YOzCF, SetoFont, 'Noto Color Emoji', sans-serif";
+const bannerFontFamily =
+  "YOzCFb, YOzCF, 'M PLUS Rounded 1c', 'Noto Sans JP', 'Noto Color Emoji', sans-serif";
 const defaultAvatarFetchTimeoutMs = 5_000;
 
 export class JoinBannerService {
@@ -57,8 +57,8 @@ export class JoinBannerService {
 
   async create(input: JoinBannerInput): Promise<Buffer> {
     const template = await this.loadTemplate();
-    const avatarSize = Math.round(template.height * 0.27);
-    const avatarTop = Math.round(template.height * 0.13);
+    const avatarSize = Math.round(template.height * 0.5);
+    const avatarTop = Math.round(template.height * 0.1);
     const avatar = await this.createAvatar(input, avatarSize);
     const textLayer = createTextLayer(
       input,
@@ -102,7 +102,7 @@ export class JoinBannerService {
 
   private async createAvatar(input: JoinBannerInput, size: number): Promise<Buffer> {
     const source = await this.loadAvatarSource(input);
-    const innerSize = Math.round(size * 0.9);
+    const innerSize = Math.round(size * 0.88);
     const border = Math.round((size - innerSize) / 2);
     const circleMask = Buffer.from(
       `<svg width="${innerSize}" height="${innerSize}" viewBox="0 0 ${innerSize} ${innerSize}">
@@ -118,8 +118,8 @@ export class JoinBannerService {
 
     const frame = Buffer.from(
       `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
-        <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="rgba(255,255,255,0.92)"/>
-        <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 4}" fill="none" stroke="#f0b7dc" stroke-width="8"/>
+        <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2}" fill="rgba(255,255,255,0.98)"/>
+        <circle cx="${size / 2}" cy="${size / 2}" r="${size / 2 - 3}" fill="none" stroke="rgba(255,255,255,0.96)" stroke-width="6"/>
       </svg>`
     );
 
@@ -174,21 +174,17 @@ function createTextLayer(
     `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
       <defs>
         <filter id="softShadow" x="-20%" y="-20%" width="140%" height="140%">
-          <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#7564a8" flood-opacity="0.22"/>
+          <feDropShadow dx="0" dy="3" stdDeviation="5" flood-color="#000000" flood-opacity="0.55"/>
         </filter>
       </defs>
-      <text x="${centerX}" y="${layout.title.y}" text-anchor="middle"
+      <text x="${centerX}" y="${layout.headline.y}" text-anchor="middle"
         font-family="${bannerFontFamily}"
-        font-size="${layout.title.fontSize}" font-weight="400" letter-spacing="0"
-        fill="#db80c6" filter="url(#softShadow)">${escapeXml(layout.title.text)}</text>
-      <text x="${centerX}" y="${layout.name.y}" text-anchor="middle"
-        font-family="${bannerFontFamily}"
-        font-size="${layout.name.fontSize}" font-weight="400" letter-spacing="0"
-        fill="#6b568b" filter="url(#softShadow)">${escapeXml(layout.name.text)}</text>
+        font-size="${layout.headline.fontSize}" font-weight="400" letter-spacing="0"
+        fill="#f7f4fb" filter="url(#softShadow)">${escapeXml(layout.headline.text)}</text>
       <text x="${centerX}" y="${layout.footer.y}" text-anchor="middle"
         font-family="${bannerFontFamily}"
         font-size="${layout.footer.fontSize}" font-weight="400" letter-spacing="0"
-        fill="#9b78aa">${escapeXml(layout.footer.text)}</text>
+        fill="#b9b7c2" filter="url(#softShadow)">${escapeXml(layout.footer.text)}</text>
     </svg>`
   );
 }
@@ -200,32 +196,24 @@ export function createJoinBannerTextLayout(
   avatarSize: number,
   avatarTop: number
 ): JoinBannerTextLayout {
-  const title = fitText("Welcome!", {
-    baseFontSize: 86,
-    maxCharacters: 16,
-    maxWidth: Math.round(width * 0.32),
-    minFontSize: 72
-  });
-  const name = fitText(input.displayName, {
-    baseFontSize: 78,
-    maxCharacters: 28,
-    maxWidth: Math.round(width * 0.38),
-    minFontSize: 52
+  const headline = fitText(`${input.displayName} just joined the server`, {
+    baseFontSize: Math.round(height * 0.086),
+    maxCharacters: 48,
+    maxWidth: Math.round(width * 0.78),
+    minFontSize: Math.round(height * 0.052)
   });
   const footer = fitText(input.memberCount ? `Member #${input.memberCount}` : "Welcome aboard", {
-    baseFontSize: 40,
+    baseFontSize: Math.round(height * 0.064),
     maxCharacters: 24,
-    maxWidth: Math.round(width * 0.3),
-    minFontSize: 30
+    maxWidth: Math.round(width * 0.5),
+    minFontSize: Math.round(height * 0.044)
   });
 
-  const titleY = avatarTop + avatarSize + Math.round(height * 0.12);
-  const nameY = titleY + Math.round(title.fontSize * 1.2);
-  const footerY = nameY + Math.round(name.fontSize * 1.15);
+  const headlineY = avatarTop + avatarSize + Math.round(height * 0.13);
+  const footerY = headlineY + Math.round(headline.fontSize * 1.2);
 
   return {
-    title: { ...title, y: titleY },
-    name: { ...name, y: nameY },
+    headline: { ...headline, y: headlineY },
     footer: { ...footer, y: footerY }
   };
 }
