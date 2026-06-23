@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -71,6 +71,22 @@ describe("WelcomeConfigRepository", () => {
     await expect(repository.get("guild-1")).resolves.toMatchObject({
       channelId: "channel-1",
       enabled: false
+    });
+  });
+
+  it("recovers the write queue after a failed update", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-welcome-"));
+    tempDirs.push(dir);
+    const filePath = path.join(dir, "configs.json");
+    const repository = new WelcomeConfigRepository(filePath);
+
+    await writeFile(filePath, "{invalid", "utf8");
+    await expect(repository.setChannel("guild-1", "channel-1")).rejects.toBeInstanceOf(SyntaxError);
+
+    await writeFile(filePath, '{"guilds":{}}\n', "utf8");
+    await expect(repository.setChannel("guild-1", "channel-1")).resolves.toMatchObject({
+      channelId: "channel-1",
+      enabled: true
     });
   });
 });

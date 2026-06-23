@@ -93,14 +93,18 @@ export class WelcomeConfigRepository {
   }
 
   private async update(mutator: (data: WelcomeConfigFile) => void): Promise<void> {
-    this.pendingWrite = this.pendingWrite.then(async () => {
-      const data = await this.read();
-      mutator(data);
-      await mkdir(path.dirname(this.filePath), { recursive: true });
-      await writeFile(this.filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-    });
+    const write = this.pendingWrite
+      .catch(() => undefined)
+      .then(async () => {
+        const data = await this.read();
+        mutator(data);
+        await mkdir(path.dirname(this.filePath), { recursive: true });
+        await writeFile(this.filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
+      });
 
-    await this.pendingWrite;
+    this.pendingWrite = write.catch(() => undefined);
+
+    await write;
   }
 
   private async read(): Promise<WelcomeConfigFile> {

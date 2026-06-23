@@ -16,6 +16,9 @@ export type WelcomeSendableChannel = {
   }): Promise<unknown>;
 };
 
+export const discordMessageMaxLength = 2_000;
+const truncationSuffix = "...";
+
 export class WelcomeService {
   private readonly repository: WelcomeConfigRepository;
   private readonly bannerService: JoinBannerService;
@@ -75,13 +78,15 @@ export class WelcomeService {
       const attachment = new AttachmentBuilder(image, {
         name: `welcome-${member.id}.png`
       });
-      const content = renderWelcomeMessage(config.messageContent, {
-        userId: member.id,
-        username: member.user.username,
-        displayName: member.displayName,
-        guildName: member.guild.name,
-        memberCount: member.guild.memberCount
-      });
+      const content = limitWelcomeMessageContent(
+        renderWelcomeMessage(config.messageContent, {
+          userId: member.id,
+          username: member.user.username,
+          displayName: member.displayName,
+          guildName: member.guild.name,
+          memberCount: member.guild.memberCount
+        })
+      );
 
       await channel.send({
         content,
@@ -128,4 +133,23 @@ export function isWelcomeSendableChannel(channel: unknown): channel is WelcomeSe
     "send" in channel &&
     typeof (channel as { send?: unknown }).send === "function"
   );
+}
+
+export function limitWelcomeMessageContent(content: string): string {
+  if (content.length <= discordMessageMaxLength) {
+    return content;
+  }
+
+  const maxBodyLength = discordMessageMaxLength - truncationSuffix.length;
+  let body = "";
+
+  for (const character of content) {
+    if (body.length + character.length > maxBodyLength) {
+      break;
+    }
+
+    body += character;
+  }
+
+  return `${body}${truncationSuffix}`;
 }

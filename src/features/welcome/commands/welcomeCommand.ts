@@ -205,23 +205,23 @@ async function handleTest(
   interaction: ChatInputCommandInteraction<"cached">,
   service: WelcomeService
 ): Promise<void> {
+  await interaction.deferReply({ ephemeral: true });
+
   const config = await service.getConfig(interaction.guildId);
 
   if (!config?.enabled) {
-    await interaction.reply({
-      content: "welcome投稿は無効です。先に `/welcome set` で送信先チャンネルを設定してください。",
-      ephemeral: true
+    await interaction.editReply({
+      content: "welcome投稿は無効です。先に `/welcome set` で送信先チャンネルを設定してください。"
     });
     return;
   }
 
   const sent = await service.send(interaction.member);
 
-  await interaction.reply({
+  await interaction.editReply({
     content: sent
       ? "welcomeのテスト投稿を送信しました。"
-      : "welcomeのテスト投稿を送信できませんでした。設定と Bot の送信権限を確認してください。",
-    ephemeral: true
+      : "welcomeのテスト投稿を送信できませんでした。設定と Bot の送信権限を確認してください。"
   });
 }
 

@@ -139,7 +139,8 @@ describe("welcome command", () => {
       }),
       send: vi.fn().mockResolvedValue(true)
     };
-    const reply = vi.fn();
+    const deferReply = vi.fn().mockResolvedValue(undefined);
+    const editReply = vi.fn().mockResolvedValue(undefined);
     const command = createWelcomeCommand(service as unknown as WelcomeService);
 
     await command.execute({
@@ -152,13 +153,17 @@ describe("welcome command", () => {
       options: {
         getSubcommand: () => "test"
       },
-      reply
+      deferReply,
+      editReply
     } as unknown as ChatInputCommandInteraction);
 
+    expect(deferReply).toHaveBeenCalledWith({ ephemeral: true });
     expect(service.send).toHaveBeenCalledWith(member);
-    expect(reply).toHaveBeenCalledWith({
-      content: "welcomeのテスト投稿を送信しました。",
-      ephemeral: true
+    expect(deferReply.mock.invocationCallOrder[0]).toBeLessThan(
+      service.send.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
+    );
+    expect(editReply).toHaveBeenCalledWith({
+      content: "welcomeのテスト投稿を送信しました。"
     });
   });
 });
