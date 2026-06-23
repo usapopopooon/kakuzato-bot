@@ -1,0 +1,20 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN}
+      WELCOME_CHANNEL_ID: ${WELCOME_CHANNEL_ID:?set WELCOME_CHANNEL_ID}
+      WELCOME_GUILD_ID: ${WELCOME_GUILD_ID:-}
+      WELCOME_MESSAGE_CONTENT: ${WELCOME_MESSAGE_CONTENT:-Welcome, {mention}!}
+      JOIN_BANNER_TEMPLATE_PATH: /app/static/img/join-banner-template.png
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      HEALTHCHECK_FILE: /tmp/kakuzato-bot-ready
+    healthcheck:
+      test: ["CMD", "node", "dist/app/healthcheck.js"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 30s
