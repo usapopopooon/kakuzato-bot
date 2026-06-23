@@ -10,8 +10,11 @@ services:
       WELCOME_MESSAGE_CONTENT: ${WELCOME_MESSAGE_CONTENT:-Welcome, {mention}!}
       BOT_ACTIVITY_NAME: ${BOT_ACTIVITY_NAME:-サーバーを管理中。}
       JOIN_BANNER_TEMPLATE_PATH: /app/static/img/join-banner-template.png
+      EVENT_LOG_CONFIG_PATH: /app/data/event-log-configs.json
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HEALTHCHECK_FILE: /tmp/kakuzato-bot-ready
+    volumes:
+      - bot-data:/app/data
     healthcheck:
       test: ["CMD", "node", "dist/app/healthcheck.js"]
       interval: 30s
@@ -19,3 +22,6 @@ services:
       retries: 3
       start_period: 20s
     stop_grace_period: 30s
+
+volumes:
+  bot-data:

@@ -1,4 +1,9 @@
-import type { Awaitable, ClientEvents } from "discord.js";
+import type {
+  Awaitable,
+  ChatInputCommandInteraction,
+  ClientEvents,
+  RESTPostAPIChatInputApplicationCommandsJSONBody
+} from "discord.js";
 
 export type DiscordEventHandler<EventName extends keyof ClientEvents> = {
   name: EventName;
@@ -12,7 +17,16 @@ export type AnyDiscordEventHandler = {
   execute: (...args: never[]) => Awaitable<void>;
 };
 
+export type DiscordCommand = {
+  data: {
+    name: string;
+    toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody;
+  };
+  execute(interaction: ChatInputCommandInteraction): Awaitable<void>;
+};
+
 export type BotModule = {
   name: string;
   events?: AnyDiscordEventHandler[];
+  commands?: DiscordCommand[];
 };

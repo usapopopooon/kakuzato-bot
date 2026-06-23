@@ -9,6 +9,7 @@ const envSchema = z.object({
   WELCOME_MESSAGE_CONTENT: z.string().default("Welcome, {mention}!"),
   BOT_ACTIVITY_NAME: z.string().default("サーバーを管理中。"),
   JOIN_BANNER_TEMPLATE_PATH: z.string().default("static/img/join-banner-template.png"),
+  EVENT_LOG_CONFIG_PATH: z.string().default("data/event-log-configs.json"),
   LOG_LEVEL: logLevelSchema.default("info"),
   HEALTHCHECK_FILE: z.string().default("/tmp/kakuzato-bot-ready")
 });
@@ -20,6 +21,7 @@ export type AppConfig = {
   welcomeMessageContent: string;
   botActivityName: string;
   joinBannerTemplatePath: string;
+  eventLogConfigPath: string;
   logLevel: z.infer<typeof logLevelSchema>;
   healthcheckFile: string;
 };
@@ -42,6 +44,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     welcomeMessageContent: result.data.WELCOME_MESSAGE_CONTENT,
     botActivityName: result.data.BOT_ACTIVITY_NAME,
     joinBannerTemplatePath: result.data.JOIN_BANNER_TEMPLATE_PATH,
+    eventLogConfigPath: result.data.EVENT_LOG_CONFIG_PATH,
     logLevel: result.data.LOG_LEVEL,
     healthcheckFile: result.data.HEALTHCHECK_FILE
   };
