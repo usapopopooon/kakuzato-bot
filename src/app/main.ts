@@ -19,10 +19,7 @@ async function main(): Promise<void> {
   const logger = createLogger(config.logLevel);
   const client = createDiscordClient();
 
-  const modules = [
-    createWelcomeModule({ config, logger }),
-    createEventLogModule({ config, logger })
-  ];
+  const modules = [createWelcomeModule({ logger }), createEventLogModule({ config, logger })];
   const commands = collectCommands(modules);
 
   registerBotModules(client, modules, logger);
