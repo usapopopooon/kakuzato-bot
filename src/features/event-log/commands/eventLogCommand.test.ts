@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import type { EventLogService } from "../services/eventLogService";
 import { createEventLogCommand } from "./eventLogCommand";
@@ -20,7 +20,7 @@ describe("eventlog command", () => {
     expect(service.setChannel).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith({
       content: "このコマンドは管理者のみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -53,7 +53,7 @@ describe("eventlog command", () => {
     expect(service.setChannel).toHaveBeenCalledWith("guild-1", "channel-1");
     expect(reply).toHaveBeenCalledWith({
       content: "イベントログの送信先を <#channel-1> に設定しました。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -90,7 +90,7 @@ describe("eventlog command", () => {
     expect(service.setChannel).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith({
       content: "そのチャンネルに送信する権限が Bot にありません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -124,7 +124,7 @@ describe("eventlog command", () => {
     expect(service.setCategory).toHaveBeenCalledWith("guild-1", "voice", false);
     expect(reply).toHaveBeenCalledWith({
       content: "ボイスログを無効にしました。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 });

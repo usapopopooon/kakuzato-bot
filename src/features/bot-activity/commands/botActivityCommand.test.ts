@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import { defaultBotActivityName } from "../repositories/botActivityRepository";
 import type { BotActivityService } from "../services/botActivityService";
@@ -21,7 +21,7 @@ describe("activity command", () => {
     expect(service.setName).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith({
       content: "このコマンドは管理者のみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -54,7 +54,7 @@ describe("activity command", () => {
     expect(service.applyToClient).toHaveBeenCalledWith(client, "サーバーを見守り中。");
     expect(reply).toHaveBeenCalledWith({
       content: "Botのプレイ中表示を「サーバーを見守り中。」に設定しました。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -86,7 +86,7 @@ describe("activity command", () => {
     expect(service.applyToClient).toHaveBeenCalledWith(client, defaultBotActivityName);
     expect(reply).toHaveBeenCalledWith({
       content: `Botのプレイ中表示をデフォルトの「${defaultBotActivityName}」に戻しました。`,
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -113,7 +113,7 @@ describe("activity command", () => {
 
     expect(reply).toHaveBeenCalledWith({
       content: "Botのプレイ中表示: サーバーを管理中。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 });

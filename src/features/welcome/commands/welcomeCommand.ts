@@ -1,5 +1,6 @@
 import {
   ChannelType,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction
@@ -62,7 +63,7 @@ async function executeWelcomeCommand(
   if (!interaction.inCachedGuild()) {
     await interaction.reply({
       content: "このコマンドはサーバー内でのみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -70,7 +71,7 @@ async function executeWelcomeCommand(
   if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
     await interaction.reply({
       content: "このコマンドは管理者のみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -112,7 +113,7 @@ async function handleSet(
   if (!isWelcomeSendableChannel(channel)) {
     await interaction.reply({
       content: "そのチャンネルにはwelcome画像を送信できません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -120,7 +121,7 @@ async function handleSet(
   if (!canBotSendWelcome(channel, interaction)) {
     await interaction.reply({
       content: "そのチャンネルに送信する権限が Bot にありません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -128,7 +129,7 @@ async function handleSet(
   await service.setChannel(interaction.guildId, channel.id);
   await interaction.reply({
     content: `welcome画像の送信先を <#${channel.id}> に設定しました。`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -141,7 +142,7 @@ async function handleMessage(
   if (content.length === 0) {
     await interaction.reply({
       content: "本文は空にできません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -151,14 +152,14 @@ async function handleMessage(
   if (!config) {
     await interaction.reply({
       content: "先に `/welcome set` で送信先チャンネルを設定してください。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
 
   await interaction.reply({
     content: `welcome本文を設定しました。\n${formatMessageContent(config.messageContent)}`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -169,7 +170,7 @@ async function handleDisable(
   await service.disable(interaction.guildId);
   await interaction.reply({
     content: "welcome投稿を無効にしました。",
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -186,7 +187,7 @@ async function handleStatus(
         `デフォルト本文: ${formatMessageContent(defaultWelcomeMessageContent)}`,
         `使用可能なプレースホルダー: ${welcomePlaceholders}`
       ].join("\n"),
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -197,7 +198,7 @@ async function handleStatus(
       `本文: ${formatMessageContent(config.messageContent)}`,
       `使用可能なプレースホルダー: ${welcomePlaceholders}`
     ].join("\n"),
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -205,7 +206,7 @@ async function handleTest(
   interaction: ChatInputCommandInteraction<"cached">,
   service: WelcomeService
 ): Promise<void> {
-  await interaction.deferReply({ ephemeral: true });
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const config = await service.getConfig(interaction.guildId);
 

@@ -24,6 +24,7 @@ RUN apt-get update \
 COPY --from=build /app/node_modules ./node_modules
 COPY --from=build /app/dist ./dist
 COPY static ./static
+RUN mkdir -p /app/data && chown -R node:node /app/data
 
 USER node
 CMD ["node", "dist/app/main.js"]

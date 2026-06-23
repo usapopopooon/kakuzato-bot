@@ -1,4 +1,10 @@
-import { Events, type ChatInputCommandInteraction, type Client, type Guild } from "discord.js";
+import {
+  Events,
+  MessageFlags,
+  type ChatInputCommandInteraction,
+  type Client,
+  type Guild
+} from "discord.js";
 import type { AppLogger } from "../logger/logger";
 import type { BotModule, DiscordCommand } from "./botModule";
 
@@ -68,10 +74,10 @@ async function executeCommand(
     const message = "コマンドの実行中にエラーが発生しました。";
 
     if (interaction.replied || interaction.deferred) {
-      await interaction.followUp({ content: message, ephemeral: true });
+      await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
       return;
     }
 
-    await interaction.reply({ content: message, ephemeral: true });
+    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
   }
 }

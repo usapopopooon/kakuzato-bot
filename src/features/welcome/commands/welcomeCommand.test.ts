@@ -1,4 +1,4 @@
-import { PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
+import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import type { WelcomeService } from "../services/welcomeService";
 import { createWelcomeCommand } from "./welcomeCommand";
@@ -20,7 +20,7 @@ describe("welcome command", () => {
     expect(service.setChannel).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith({
       content: "このコマンドは管理者のみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -53,7 +53,7 @@ describe("welcome command", () => {
     expect(service.setChannel).toHaveBeenCalledWith("guild-1", "channel-1");
     expect(reply).toHaveBeenCalledWith({
       content: "welcome画像の送信先を <#channel-1> に設定しました。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -90,7 +90,7 @@ describe("welcome command", () => {
     expect(service.setChannel).not.toHaveBeenCalled();
     expect(reply).toHaveBeenCalledWith({
       content: "そのチャンネルに送信する権限が Bot にありません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -123,7 +123,7 @@ describe("welcome command", () => {
     expect(service.setMessage).toHaveBeenCalledWith("guild-1", "ようこそ、{mention}!");
     expect(reply).toHaveBeenCalledWith({
       content: "welcome本文を設定しました。\nようこそ、{mention}!",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
   });
 
@@ -157,7 +157,7 @@ describe("welcome command", () => {
       editReply
     } as unknown as ChatInputCommandInteraction);
 
-    expect(deferReply).toHaveBeenCalledWith({ ephemeral: true });
+    expect(deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
     expect(service.send).toHaveBeenCalledWith(member);
     expect(deferReply.mock.invocationCallOrder[0]).toBeLessThan(
       service.send.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY

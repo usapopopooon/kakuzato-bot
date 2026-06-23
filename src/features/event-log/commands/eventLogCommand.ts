@@ -1,5 +1,6 @@
 import {
   ChannelType,
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction
@@ -75,7 +76,7 @@ async function executeEventLogCommand(
   if (!interaction.inCachedGuild()) {
     await interaction.reply({
       content: "このコマンドはサーバー内でのみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -83,7 +84,7 @@ async function executeEventLogCommand(
   if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
     await interaction.reply({
       content: "このコマンドは管理者のみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -125,7 +126,7 @@ async function handleSet(
   if (!isEventLogSendableChannel(channel)) {
     await interaction.reply({
       content: "そのチャンネルにはイベントログを送信できません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -133,7 +134,7 @@ async function handleSet(
   if (!canBotSendEventLog(channel, interaction)) {
     await interaction.reply({
       content: "そのチャンネルに送信する権限が Bot にありません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -141,7 +142,7 @@ async function handleSet(
   await service.setChannel(interaction.guildId, channel.id);
   await interaction.reply({
     content: `イベントログの送信先を <#${channel.id}> に設定しました。`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -183,7 +184,7 @@ async function handleDisable(
   await service.disable(interaction.guildId);
   await interaction.reply({
     content: "イベントログを無効にしました。",
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -197,7 +198,7 @@ async function handleCategory(
   if (!isEventLogCategory(category)) {
     await interaction.reply({
       content: "未知のイベントログカテゴリです。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -207,14 +208,14 @@ async function handleCategory(
   if (!config) {
     await interaction.reply({
       content: "先に `/eventlog set` で送信先チャンネルを設定してください。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
 
   await interaction.reply({
     content: `${eventLogCategoryLabels[category]}ログを${enabled ? "有効" : "無効"}にしました。`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -227,7 +228,7 @@ async function handleStatus(
   if (!config?.enabled) {
     await interaction.reply({
       content: "イベントログは無効です。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -237,7 +238,7 @@ async function handleStatus(
       `イベントログは有効です。送信先: <#${config.channelId}>`,
       `有効カテゴリ: ${formatCategoryList(config.enabledCategories)}`
     ].join("\n"),
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -256,7 +257,7 @@ async function handleTest(
     content: sent
       ? "テストログを送信しました。"
       : "テストログを送信できませんでした。設定と Bot の送信権限を確認してください。",
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 

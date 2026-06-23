@@ -1,7 +1,18 @@
 services:
+  data-permissions:
+    build: .
+    user: root
+    command: ["sh", "-c", "chown -R node:node /app/data"]
+    volumes:
+      - bot-data:/app/data
+    restart: "no"
+
   bot:
     build: .
     restart: unless-stopped
+    depends_on:
+      data-permissions:
+        condition: service_completed_successfully
     environment:
       NODE_ENV: production
       DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN}

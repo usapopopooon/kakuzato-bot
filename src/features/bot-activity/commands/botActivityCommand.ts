@@ -1,4 +1,5 @@
 import {
+  MessageFlags,
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction
@@ -45,7 +46,7 @@ async function executeBotActivityCommand(
   if (!interaction.inCachedGuild()) {
     await interaction.reply({
       content: "このコマンドはサーバー内でのみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -53,7 +54,7 @@ async function executeBotActivityCommand(
   if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
     await interaction.reply({
       content: "このコマンドは管理者のみ実行できます。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -84,7 +85,7 @@ async function handleSet(
   if (activityName.length === 0) {
     await interaction.reply({
       content: "プレイ中表示は空にできません。",
-      ephemeral: true
+      flags: MessageFlags.Ephemeral
     });
     return;
   }
@@ -93,7 +94,7 @@ async function handleSet(
   await service.applyToClient(interaction.client, config.activityName);
   await interaction.reply({
     content: `Botのプレイ中表示を「${config.activityName}」に設定しました。`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -105,7 +106,7 @@ async function handleReset(
   await service.applyToClient(interaction.client, config.activityName);
   await interaction.reply({
     content: `Botのプレイ中表示をデフォルトの「${defaultBotActivityName}」に戻しました。`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
 
@@ -117,6 +118,6 @@ async function handleStatus(
 
   await interaction.reply({
     content: `Botのプレイ中表示: ${config.activityName}`,
-    ephemeral: true
+    flags: MessageFlags.Ephemeral
   });
 }
