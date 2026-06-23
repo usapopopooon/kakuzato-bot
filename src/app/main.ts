@@ -11,6 +11,7 @@ import { registerBotModules } from "../platform/discord/registerBotModules";
 import { createLogger } from "../platform/logger/logger";
 import { createBotActivityModule } from "../features/bot-activity/botActivity.module";
 import { createEventLogModule } from "../features/event-log/eventLog.module";
+import { createStickyModule } from "../features/sticky/sticky.module";
 import { createWelcomeModule } from "../features/welcome/welcome.module";
 import { markHealthy } from "./health";
 import { setupShutdown } from "./shutdown";
@@ -23,6 +24,7 @@ async function main(): Promise<void> {
   const modules = [
     createBotActivityModule({ logger }),
     createWelcomeModule({ logger }),
+    createStickyModule({ logger }),
     createEventLogModule({ config, logger })
   ];
   const commands = collectCommands(modules);
