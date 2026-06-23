@@ -1,11 +1,19 @@
 import {
+  ActionRowBuilder,
   ChannelType,
   MessageFlags,
+  ModalBuilder,
   PermissionFlagsBits,
   SlashCommandBuilder,
-  type ChatInputCommandInteraction
+  TextInputBuilder,
+  TextInputStyle,
+  type ChatInputCommandInteraction,
+  type ModalSubmitInteraction
 } from "discord.js";
-import type { DiscordCommand } from "../../../platform/discord/botModule";
+import type {
+  DiscordCommand,
+  DiscordModalSubmitHandler
+} from "../../../platform/discord/botModule";
 import {
   defaultStickyDelaySeconds,
   maxStickyDelaySeconds,
@@ -17,6 +25,24 @@ import {
   isStickySendableChannel,
   type StickyMessageService
 } from "../services/stickyMessageService";
+
+const stickyModalCustomIdPrefix = "sticky-message:";
+const stickyTextContentInputId = "sticky-message-content";
+const stickyEmbedTitleInputId = "sticky-embed-title";
+const stickyEmbedColorInputId = "sticky-embed-color";
+const stickyEmbedDescriptionInputId = "sticky-embed-description";
+
+type StickyMode = "text" | "embed";
+
+type StickyModalPayload = {
+  mode: StickyMode;
+  channelId: string;
+  delaySeconds: number;
+};
+
+type StickyGuildInteraction =
+  | ChatInputCommandInteraction<"cached">
+  | ModalSubmitInteraction<"cached">;
 
 export function createStickyMessageCommand(service: StickyMessageService): DiscordCommand {
   return {
@@ -34,13 +60,6 @@ export function createStickyMessageCommand(service: StickyMessageService): Disco
               .setName("channel")
               .setDescription("stickyメッセージを固定表示するチャンネル")
               .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
-              .setRequired(true)
-          )
-          .addStringOption((option) =>
-            option
-              .setName("content")
-              .setDescription("固定表示する本文。改行は \\n")
-              .setMaxLength(2_000)
               .setRequired(true)
           )
           .addIntegerOption((option) =>
@@ -61,19 +80,6 @@ export function createStickyMessageCommand(service: StickyMessageService): Disco
               .setDescription("stickyメッセージを固定表示するチャンネル")
               .addChannelTypes(ChannelType.GuildText, ChannelType.GuildAnnouncement)
               .setRequired(true)
-          )
-          .addStringOption((option) =>
-            option
-              .setName("description")
-              .setDescription("固定表示する説明文。改行は \\n")
-              .setMaxLength(4_000)
-              .setRequired(true)
-          )
-          .addStringOption((option) =>
-            option.setName("title").setDescription("Embedタイトル").setMaxLength(256)
-          )
-          .addStringOption((option) =>
-            option.setName("color").setDescription("Embed色。例: FF0000 または #00FF00")
           )
           .addIntegerOption((option) =>
             option
@@ -111,6 +117,15 @@ export function createStickyMessageCommand(service: StickyMessageService): Disco
   };
 }
 
+export function createStickyMessageModalSubmitHandler(
+  service: StickyMessageService
+): DiscordModalSubmitHandler {
+  return {
+    customIdPrefix: stickyModalCustomIdPrefix,
+    execute: (interaction) => executeStickyMessageModalSubmit(interaction, service)
+  };
+}
+
 async function executeStickyMessageCommand(
   interaction: ChatInputCommandInteraction,
   service: StickyMessageService
@@ -134,12 +149,12 @@ async function executeStickyMessageCommand(
   const subcommand = interaction.options.getSubcommand();
 
   if (subcommand === "text") {
-    await handleText(interaction, service);
+    await handleText(interaction);
     return;
   }
 
   if (subcommand === "embed") {
-    await handleEmbed(interaction, service);
+    await handleEmbed(interaction);
     return;
   }
 
@@ -153,87 +168,36 @@ async function executeStickyMessageCommand(
   }
 }
 
-async function handleText(
-  interaction: ChatInputCommandInteraction<"cached">,
-  service: StickyMessageService
-): Promise<void> {
-  const channel = await getConfiguredChannel(interaction, false);
+async function handleText(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+  const selectedChannel = interaction.options.getChannel("channel", true);
+  const channel = await fetchConfiguredChannel(interaction, selectedChannel.id, false);
 
   if (!channel) {
     return;
   }
 
-  const content = normalizeStickyMessageInput(interaction.options.getString("content", true));
-
-  if (content.length === 0) {
-    await interaction.reply({
-      content: "本文は空にできません。",
-      flags: MessageFlags.Ephemeral
-    });
-    return;
-  }
-
   const delaySeconds = getDelaySeconds(interaction);
-  const config = await service.setText(interaction.guildId, channel, content, delaySeconds);
-
-  await interaction.reply({
-    content: `stickyメッセージを <#${config.channelId}> に設定しました。種類: テキスト / 遅延: ${config.delaySeconds}秒`,
-    flags: MessageFlags.Ephemeral
-  });
+  await interaction.showModal(createTextStickyModal(channel.id, delaySeconds));
 }
 
-async function handleEmbed(
-  interaction: ChatInputCommandInteraction<"cached">,
-  service: StickyMessageService
-): Promise<void> {
-  const channel = await getConfiguredChannel(interaction, true);
+async function handleEmbed(interaction: ChatInputCommandInteraction<"cached">): Promise<void> {
+  const selectedChannel = interaction.options.getChannel("channel", true);
+  const channel = await fetchConfiguredChannel(interaction, selectedChannel.id, true);
 
   if (!channel) {
     return;
   }
 
-  const description = normalizeStickyMessageInput(
-    interaction.options.getString("description", true)
-  );
-
-  if (description.length === 0) {
-    await interaction.reply({
-      content: "説明文は空にできません。",
-      flags: MessageFlags.Ephemeral
-    });
-    return;
-  }
-
-  const color = parseStickyColor(interaction.options.getString("color"));
-
-  if (color === "invalid") {
-    await interaction.reply({
-      content: "色の形式が不正です。`FF0000`、`#00FF00`、`0x3366FF` のように指定してください。",
-      flags: MessageFlags.Ephemeral
-    });
-    return;
-  }
-
-  const title = interaction.options.getString("title")?.trim() ?? "";
   const delaySeconds = getDelaySeconds(interaction);
-  const config = await service.setEmbed(interaction.guildId, channel, {
-    title,
-    description,
-    color,
-    delaySeconds
-  });
-
-  await interaction.reply({
-    content: `stickyメッセージを <#${config.channelId}> に設定しました。種類: Embed / 遅延: ${config.delaySeconds}秒`,
-    flags: MessageFlags.Ephemeral
-  });
+  await interaction.showModal(createEmbedStickyModal(channel.id, delaySeconds));
 }
 
 async function handleRemove(
   interaction: ChatInputCommandInteraction<"cached">,
   service: StickyMessageService
 ): Promise<void> {
-  const channel = await getConfiguredChannel(interaction, false, false);
+  const selectedChannel = interaction.options.getChannel("channel", true);
+  const channel = await fetchConfiguredChannel(interaction, selectedChannel.id, false, false);
 
   if (!channel) {
     return;
@@ -270,13 +234,13 @@ async function handleStatus(
   });
 }
 
-async function getConfiguredChannel(
-  interaction: ChatInputCommandInteraction<"cached">,
+async function fetchConfiguredChannel(
+  interaction: StickyGuildInteraction,
+  channelId: string,
   requiresEmbedLinks: boolean,
   checkPermissions = true
 ) {
-  const selectedChannel = interaction.options.getChannel("channel", true);
-  const channel = await interaction.guild.channels.fetch(selectedChannel.id).catch(() => null);
+  const channel = await interaction.guild.channels.fetch(channelId).catch(() => null);
 
   if (!isStickySendableChannel(channel)) {
     await interaction.reply({
@@ -299,7 +263,7 @@ async function getConfiguredChannel(
 
 function canBotManageSticky(
   channel: unknown,
-  interaction: ChatInputCommandInteraction<"cached">,
+  interaction: StickyGuildInteraction,
   requiresEmbedLinks: boolean
 ): boolean {
   const clientUser = (interaction as { client?: { user?: unknown } }).client?.user;
@@ -333,6 +297,121 @@ function canBotManageSticky(
   return permissions?.has(requiredPermissions) ?? false;
 }
 
+async function executeStickyMessageModalSubmit(
+  interaction: ModalSubmitInteraction,
+  service: StickyMessageService
+): Promise<void> {
+  const payload = parseStickyModalCustomId(interaction.customId);
+
+  if (!payload) {
+    await interaction.reply({
+      content: "stickyメッセージの入力情報が不正です。もう一度コマンドから設定してください。",
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (!interaction.inCachedGuild()) {
+    await interaction.reply({
+      content: "この入力はサーバー内でのみ実行できます。",
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
+    await interaction.reply({
+      content: "この操作は管理者のみ実行できます。",
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  if (payload.mode === "text") {
+    await handleTextModalSubmit(interaction, service, payload);
+    return;
+  }
+
+  await handleEmbedModalSubmit(interaction, service, payload);
+}
+
+async function handleTextModalSubmit(
+  interaction: ModalSubmitInteraction<"cached">,
+  service: StickyMessageService,
+  payload: StickyModalPayload
+): Promise<void> {
+  const channel = await fetchConfiguredChannel(interaction, payload.channelId, false);
+
+  if (!channel) {
+    return;
+  }
+
+  const content = normalizeStickyMessageInput(
+    interaction.fields.getTextInputValue(stickyTextContentInputId)
+  );
+
+  if (content.length === 0) {
+    await interaction.reply({
+      content: "本文は空にできません。",
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  const config = await service.setText(interaction.guildId, channel, content, payload.delaySeconds);
+
+  await interaction.reply({
+    content: `stickyメッセージを <#${config.channelId}> に設定しました。種類: テキスト / 遅延: ${config.delaySeconds}秒`,
+    flags: MessageFlags.Ephemeral
+  });
+}
+
+async function handleEmbedModalSubmit(
+  interaction: ModalSubmitInteraction<"cached">,
+  service: StickyMessageService,
+  payload: StickyModalPayload
+): Promise<void> {
+  const channel = await fetchConfiguredChannel(interaction, payload.channelId, true);
+
+  if (!channel) {
+    return;
+  }
+
+  const description = normalizeStickyMessageInput(
+    interaction.fields.getTextInputValue(stickyEmbedDescriptionInputId)
+  );
+
+  if (description.length === 0) {
+    await interaction.reply({
+      content: "説明文は空にできません。",
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  const color = parseStickyColor(getOptionalModalTextValue(interaction, stickyEmbedColorInputId));
+
+  if (color === "invalid") {
+    await interaction.reply({
+      content: "色の形式が不正です。`FF0000`、`#00FF00`、`0x3366FF` のように指定してください。",
+      flags: MessageFlags.Ephemeral
+    });
+    return;
+  }
+
+  const config = await service.setEmbed(interaction.guildId, channel, {
+    title: getOptionalModalTextValue(interaction, stickyEmbedTitleInputId).trim(),
+    description,
+    color,
+    delaySeconds: payload.delaySeconds
+  });
+
+  await interaction.reply({
+    content: `stickyメッセージを <#${config.channelId}> に設定しました。種類: Embed / 遅延: ${config.delaySeconds}秒`,
+    flags: MessageFlags.Ephemeral
+  });
+}
+
 function getDelaySeconds(interaction: ChatInputCommandInteraction<"cached">): number {
   return normalizeStickyDelaySeconds(
     interaction.options.getInteger("delay_seconds") ?? defaultStickyDelaySeconds
@@ -355,6 +434,105 @@ export function parseStickyColor(value: string | null): number | undefined | "in
 
 export function normalizeStickyMessageInput(value: string): string {
   return value.trim().replace(/\r\n|\r|\\r\\n|\\n|\\r/gu, "\n");
+}
+
+export function createStickyModalCustomId(
+  mode: StickyMode,
+  channelId: string,
+  delaySeconds: number
+): string {
+  return `${stickyModalCustomIdPrefix}${mode}:${channelId}:${normalizeStickyDelaySeconds(
+    delaySeconds
+  )}`;
+}
+
+export function parseStickyModalCustomId(customId: string): StickyModalPayload | undefined {
+  if (!customId.startsWith(stickyModalCustomIdPrefix)) {
+    return undefined;
+  }
+
+  const [mode, channelId, delaySeconds] = customId
+    .slice(stickyModalCustomIdPrefix.length)
+    .split(":");
+
+  if ((mode !== "text" && mode !== "embed") || !channelId || !delaySeconds) {
+    return undefined;
+  }
+
+  const parsedDelaySeconds = Number(delaySeconds);
+
+  if (!Number.isFinite(parsedDelaySeconds)) {
+    return undefined;
+  }
+
+  return {
+    mode,
+    channelId,
+    delaySeconds: normalizeStickyDelaySeconds(parsedDelaySeconds)
+  };
+}
+
+function createTextStickyModal(channelId: string, delaySeconds: number): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(createStickyModalCustomId("text", channelId, delaySeconds))
+    .setTitle("stickyテキストを設定")
+    .addComponents(
+      createTextInputRow(
+        new TextInputBuilder()
+          .setCustomId(stickyTextContentInputId)
+          .setLabel("固定表示する本文")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setMaxLength(2_000)
+      )
+    );
+}
+
+function createEmbedStickyModal(channelId: string, delaySeconds: number): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(createStickyModalCustomId("embed", channelId, delaySeconds))
+    .setTitle("sticky Embedを設定")
+    .addComponents(
+      createTextInputRow(
+        new TextInputBuilder()
+          .setCustomId(stickyEmbedTitleInputId)
+          .setLabel("タイトル")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(256)
+      ),
+      createTextInputRow(
+        new TextInputBuilder()
+          .setCustomId(stickyEmbedColorInputId)
+          .setLabel("色")
+          .setPlaceholder("FF0000 / #00FF00 / 0x3366FF")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(8)
+      ),
+      createTextInputRow(
+        new TextInputBuilder()
+          .setCustomId(stickyEmbedDescriptionInputId)
+          .setLabel("固定表示する説明文")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setMaxLength(4_000)
+      )
+    );
+}
+
+function createTextInputRow(input: TextInputBuilder): ActionRowBuilder<TextInputBuilder> {
+  return new ActionRowBuilder<TextInputBuilder>().addComponents(input);
+}
+
+function getOptionalModalTextValue(interaction: ModalSubmitInteraction, customId: string): string {
+  const field = interaction.fields.fields.get(customId);
+
+  if (!field || !("value" in field) || typeof field.value !== "string") {
+    return "";
+  }
+
+  return field.value;
 }
 
 function formatStickyStatus(config: StickyMessageConfig): string {

@@ -3,6 +3,7 @@ import { loadConfig } from "../platform/config/env";
 import { createDiscordClient } from "../platform/discord/client";
 import {
   collectCommands,
+  collectModalSubmitHandlers,
   registerInteractionRouter,
   syncCommandsForGuild,
   syncGuildCommands
@@ -28,9 +29,10 @@ async function main(): Promise<void> {
     createEventLogModule({ config, logger })
   ];
   const commands = collectCommands(modules);
+  const modalSubmitHandlers = collectModalSubmitHandlers(modules);
 
   registerBotModules(client, modules, logger);
-  registerInteractionRouter(client, commands, logger);
+  registerInteractionRouter(client, commands, logger, modalSubmitHandlers);
 
   client.once(Events.ClientReady, async (readyClient) => {
     await syncGuildCommands(readyClient, commands, logger);

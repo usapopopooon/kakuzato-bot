@@ -3,35 +3,53 @@ import {
   MessageFlags,
   type ChatInputCommandInteraction,
   type Client,
-  type Guild
+  type Guild,
+  type ModalSubmitInteraction
 } from "discord.js";
 import type { AppLogger } from "../logger/logger";
-import type { BotModule, DiscordCommand } from "./botModule";
+import type { BotModule, DiscordCommand, DiscordModalSubmitHandler } from "./botModule";
 
 export function collectCommands(modules: BotModule[]): DiscordCommand[] {
   return modules.flatMap((botModule) => botModule.commands ?? []);
 }
 
+export function collectModalSubmitHandlers(modules: BotModule[]): DiscordModalSubmitHandler[] {
+  return modules.flatMap((botModule) => botModule.modalSubmitHandlers ?? []);
+}
+
 export function registerInteractionRouter(
   client: Client,
   commands: DiscordCommand[],
-  logger: AppLogger
+  logger: AppLogger,
+  modalSubmitHandlers: DiscordModalSubmitHandler[] = []
 ): void {
   const commandMap = new Map(commands.map((command) => [command.data.name, command]));
 
   client.on(Events.InteractionCreate, async (interaction) => {
-    if (!interaction.isChatInputCommand()) {
+    if (interaction.isChatInputCommand()) {
+      const command = commandMap.get(interaction.commandName);
+
+      if (!command) {
+        logger.warn({ commandName: interaction.commandName }, "Unknown command interaction");
+        return;
+      }
+
+      await executeCommand(command, interaction, logger);
       return;
     }
 
-    const command = commandMap.get(interaction.commandName);
+    if (interaction.isModalSubmit()) {
+      const handler = modalSubmitHandlers.find((candidate) =>
+        interaction.customId.startsWith(candidate.customIdPrefix)
+      );
 
-    if (!command) {
-      logger.warn({ commandName: interaction.commandName }, "Unknown command interaction");
-      return;
+      if (!handler) {
+        logger.warn({ customId: interaction.customId }, "Unknown modal submit interaction");
+        return;
+      }
+
+      await executeModalSubmitHandler(handler, interaction, logger);
     }
-
-    await executeCommand(command, interaction, logger);
   });
 }
 
@@ -72,6 +90,30 @@ async function executeCommand(
     );
 
     const message = "コマンドの実行中にエラーが発生しました。";
+
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+  }
+}
+
+async function executeModalSubmitHandler(
+  handler: DiscordModalSubmitHandler,
+  interaction: ModalSubmitInteraction,
+  logger: AppLogger
+): Promise<void> {
+  try {
+    await handler.execute(interaction);
+  } catch (error) {
+    logger.error(
+      { error, customId: interaction.customId, guildId: interaction.guildId },
+      "Modal submit execution failed"
+    );
+
+    const message = "入力内容の処理中にエラーが発生しました。";
 
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });

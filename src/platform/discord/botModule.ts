@@ -2,6 +2,7 @@ import type {
   Awaitable,
   ChatInputCommandInteraction,
   ClientEvents,
+  ModalSubmitInteraction,
   RESTPostAPIChatInputApplicationCommandsJSONBody
 } from "discord.js";
 
@@ -25,8 +26,14 @@ export type DiscordCommand = {
   execute(interaction: ChatInputCommandInteraction): Awaitable<void>;
 };
 
+export type DiscordModalSubmitHandler = {
+  customIdPrefix: string;
+  execute(interaction: ModalSubmitInteraction): Awaitable<void>;
+};
+
 export type BotModule = {
   name: string;
   events?: AnyDiscordEventHandler[];
   commands?: DiscordCommand[];
+  modalSubmitHandlers?: DiscordModalSubmitHandler[];
 };
