@@ -36,7 +36,6 @@ export type JoinBannerTextLayout = {
   title: FittedText & { y: number };
   name: FittedText & { y: number };
   footer: FittedText & { y: number };
-  guild: FittedText & { y: number };
 };
 
 const bannerFontFamily = "YOzCFb, YOzCF, SetoFont, 'Noto Color Emoji', sans-serif";
@@ -190,10 +189,6 @@ function createTextLayer(
         font-family="${bannerFontFamily}"
         font-size="${layout.footer.fontSize}" font-weight="400" letter-spacing="0"
         fill="#9b78aa">${escapeXml(layout.footer.text)}</text>
-      <text x="${centerX}" y="${layout.guild.y}" text-anchor="middle"
-        font-family="${bannerFontFamily}"
-        font-size="${layout.guild.fontSize}" font-weight="400" letter-spacing="0"
-        fill="#ad8cb7">${escapeXml(layout.guild.text)}</text>
     </svg>`
   );
 }
@@ -223,12 +218,6 @@ export function createJoinBannerTextLayout(
     maxWidth: Math.round(width * 0.3),
     minFontSize: 30
   });
-  const guild = fitText(`to ${input.guildName}`, {
-    baseFontSize: 32,
-    maxCharacters: 38,
-    maxWidth: Math.round(width * 0.36),
-    minFontSize: 24
-  });
 
   const titleY = avatarTop + avatarSize + Math.round(height * 0.12);
   const nameY = titleY + Math.round(title.fontSize * 1.2);
@@ -237,8 +226,7 @@ export function createJoinBannerTextLayout(
   return {
     title: { ...title, y: titleY },
     name: { ...name, y: nameY },
-    footer: { ...footer, y: footerY },
-    guild: { ...guild, y: height - Math.round(height * 0.058) }
+    footer: { ...footer, y: footerY }
   };
 }
 

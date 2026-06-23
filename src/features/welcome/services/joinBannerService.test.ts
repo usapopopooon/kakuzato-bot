@@ -70,9 +70,6 @@ describe("JoinBannerService", () => {
     expect(estimateTextWidth(layout.name.text, layout.name.fontSize)).toBeLessThanOrEqual(
       layout.name.maxWidth
     );
-    expect(estimateTextWidth(layout.guild.text, layout.guild.fontSize)).toBeLessThanOrEqual(
-      layout.guild.maxWidth
-    );
   });
 
   it("falls back to a generated avatar when avatar fetching times out", async () => {
