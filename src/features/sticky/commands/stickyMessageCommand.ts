@@ -39,7 +39,7 @@ export function createStickyMessageCommand(service: StickyMessageService): Disco
           .addStringOption((option) =>
             option
               .setName("content")
-              .setDescription("固定表示する本文")
+              .setDescription("固定表示する本文。改行は \\n")
               .setMaxLength(2_000)
               .setRequired(true)
           )
@@ -65,7 +65,7 @@ export function createStickyMessageCommand(service: StickyMessageService): Disco
           .addStringOption((option) =>
             option
               .setName("description")
-              .setDescription("固定表示する説明文")
+              .setDescription("固定表示する説明文。改行は \\n")
               .setMaxLength(4_000)
               .setRequired(true)
           )
@@ -163,7 +163,7 @@ async function handleText(
     return;
   }
 
-  const content = interaction.options.getString("content", true).trim();
+  const content = normalizeStickyMessageInput(interaction.options.getString("content", true));
 
   if (content.length === 0) {
     await interaction.reply({
@@ -192,7 +192,9 @@ async function handleEmbed(
     return;
   }
 
-  const description = interaction.options.getString("description", true).trim();
+  const description = normalizeStickyMessageInput(
+    interaction.options.getString("description", true)
+  );
 
   if (description.length === 0) {
     await interaction.reply({
@@ -349,6 +351,10 @@ export function parseStickyColor(value: string | null): number | undefined | "in
   }
 
   return Number.parseInt(normalized, 16);
+}
+
+export function normalizeStickyMessageInput(value: string): string {
+  return value.trim().replace(/\r\n|\r|\\r\\n|\\n|\\r/gu, "\n");
 }
 
 function formatStickyStatus(config: StickyMessageConfig): string {

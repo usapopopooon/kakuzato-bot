@@ -1,7 +1,11 @@
 import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
 import { describe, expect, it, vi } from "vitest";
 import type { StickyMessageService } from "../services/stickyMessageService";
-import { createStickyMessageCommand, parseStickyColor } from "./stickyMessageCommand";
+import {
+  createStickyMessageCommand,
+  normalizeStickyMessageInput,
+  parseStickyColor
+} from "./stickyMessageCommand";
 
 describe("sticky command", () => {
   it("rejects non-admin users before changing config", async () => {
@@ -65,6 +69,97 @@ describe("sticky command", () => {
     expect(reply).toHaveBeenCalledWith({
       content: "stickyメッセージを <#channel-1> に設定しました。種類: テキスト / 遅延: 10秒",
       flags: MessageFlags.Ephemeral
+    });
+  });
+
+  it("converts escaped newlines in text sticky messages", async () => {
+    const service = {
+      setText: vi.fn().mockResolvedValue({
+        guildId: "guild-1",
+        channelId: "channel-1",
+        messageId: "message-1",
+        messageType: "text",
+        title: "",
+        description: "1行目\n2行目",
+        delaySeconds: 10,
+        updatedAt: new Date().toISOString()
+      })
+    };
+    const channel = { id: "channel-1", send: vi.fn() };
+    const reply = vi.fn();
+    const command = createStickyMessageCommand(service as unknown as StickyMessageService);
+
+    await command.execute({
+      inCachedGuild: () => true,
+      guildId: "guild-1",
+      guild: {
+        channels: {
+          fetch: vi.fn().mockResolvedValue(channel)
+        }
+      },
+      memberPermissions: {
+        has: (permission: bigint) => permission === PermissionFlagsBits.Administrator
+      },
+      options: {
+        getSubcommand: () => "text",
+        getChannel: () => ({ id: "channel-1" }),
+        getString: (name: string) => (name === "content" ? "1行目\\n2行目" : null),
+        getInteger: () => 10
+      },
+      reply
+    } as unknown as ChatInputCommandInteraction);
+
+    expect(service.setText).toHaveBeenCalledWith("guild-1", channel, "1行目\n2行目", 10);
+  });
+
+  it("converts escaped newlines in embed sticky descriptions", async () => {
+    const service = {
+      setEmbed: vi.fn().mockResolvedValue({
+        guildId: "guild-1",
+        channelId: "channel-1",
+        messageId: "message-1",
+        messageType: "embed",
+        title: "",
+        description: "1行目\n2行目",
+        delaySeconds: 5,
+        updatedAt: new Date().toISOString()
+      })
+    };
+    const channel = { id: "channel-1", send: vi.fn() };
+    const reply = vi.fn();
+    const command = createStickyMessageCommand(service as unknown as StickyMessageService);
+
+    await command.execute({
+      inCachedGuild: () => true,
+      guildId: "guild-1",
+      guild: {
+        channels: {
+          fetch: vi.fn().mockResolvedValue(channel)
+        }
+      },
+      memberPermissions: {
+        has: (permission: bigint) => permission === PermissionFlagsBits.Administrator
+      },
+      options: {
+        getSubcommand: () => "embed",
+        getChannel: () => ({ id: "channel-1" }),
+        getString: (name: string) => {
+          if (name === "description") {
+            return "1行目\\n2行目";
+          }
+
+          return null;
+        },
+        getInteger: () => null
+      },
+      reply
+    } as unknown as ChatInputCommandInteraction);
+
+    expect(service.setEmbed).toHaveBeenCalledWith("guild-1", channel, {
+      title: "",
+      description: "1行目\n2行目",
+      color: undefined,
+      delaySeconds: 5
     });
   });
 
@@ -162,5 +257,13 @@ describe("parseStickyColor", () => {
 
   it("rejects invalid colors", () => {
     expect(parseStickyColor("zzzzzz")).toBe("invalid");
+  });
+});
+
+describe("normalizeStickyMessageInput", () => {
+  it("trims surrounding whitespace and normalizes newline forms", () => {
+    expect(normalizeStickyMessageInput("  1行目\\n2行目\\r\\n3行目\r4行目  ")).toBe(
+      "1行目\n2行目\n3行目\n4行目"
+    );
   });
 });
