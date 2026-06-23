@@ -5,7 +5,6 @@ services:
     environment:
       NODE_ENV: production
       DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN}
-      BOT_ACTIVITY_NAME: ${BOT_ACTIVITY_NAME:-サーバーを管理中。}
       EVENT_LOG_CONFIG_PATH: /app/data/event-log-configs.json
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HEALTHCHECK_FILE: /tmp/kakuzato-bot-ready

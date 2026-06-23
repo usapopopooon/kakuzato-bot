@@ -4,7 +4,6 @@ const logLevelSchema = z.enum(["fatal", "error", "warn", "info", "debug", "trace
 
 const envSchema = z.object({
   DISCORD_TOKEN: z.string().min(1, "DISCORD_TOKEN is required"),
-  BOT_ACTIVITY_NAME: z.string().default("サーバーを管理中。"),
   EVENT_LOG_CONFIG_PATH: z.string().default("data/event-log-configs.json"),
   LOG_LEVEL: logLevelSchema.default("info"),
   HEALTHCHECK_FILE: z.string().default("/tmp/kakuzato-bot-ready")
@@ -12,7 +11,6 @@ const envSchema = z.object({
 
 export type AppConfig = {
   discordToken: string;
-  botActivityName: string;
   eventLogConfigPath: string;
   logLevel: z.infer<typeof logLevelSchema>;
   healthcheckFile: string;
@@ -31,7 +29,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
 
   return {
     discordToken: result.data.DISCORD_TOKEN,
-    botActivityName: result.data.BOT_ACTIVITY_NAME,
     eventLogConfigPath: result.data.EVENT_LOG_CONFIG_PATH,
     logLevel: result.data.LOG_LEVEL,
     healthcheckFile: result.data.HEALTHCHECK_FILE

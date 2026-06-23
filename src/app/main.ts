@@ -1,4 +1,4 @@
-import { ActivityType, Events } from "discord.js";
+import { Events } from "discord.js";
 import { loadConfig } from "../platform/config/env";
 import { createDiscordClient } from "../platform/discord/client";
 import {
@@ -9,6 +9,7 @@ import {
 } from "../platform/discord/registerCommands";
 import { registerBotModules } from "../platform/discord/registerBotModules";
 import { createLogger } from "../platform/logger/logger";
+import { createBotActivityModule } from "../features/bot-activity/botActivity.module";
 import { createEventLogModule } from "../features/event-log/eventLog.module";
 import { createWelcomeModule } from "../features/welcome/welcome.module";
 import { markHealthy } from "./health";
@@ -19,16 +20,17 @@ async function main(): Promise<void> {
   const logger = createLogger(config.logLevel);
   const client = createDiscordClient();
 
-  const modules = [createWelcomeModule({ logger }), createEventLogModule({ config, logger })];
+  const modules = [
+    createBotActivityModule({ logger }),
+    createWelcomeModule({ logger }),
+    createEventLogModule({ config, logger })
+  ];
   const commands = collectCommands(modules);
 
   registerBotModules(client, modules, logger);
   registerInteractionRouter(client, commands, logger);
 
   client.once(Events.ClientReady, async (readyClient) => {
-    readyClient.user.setActivity(config.botActivityName, {
-      type: ActivityType.Playing
-    });
     await syncGuildCommands(readyClient, commands, logger);
     logger.info({ user: readyClient.user.tag }, "Discord bot is ready");
     await markHealthy(config.healthcheckFile);
