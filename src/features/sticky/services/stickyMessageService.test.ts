@@ -268,6 +268,46 @@ describe("StickyMessageService", () => {
     );
   });
 
+  it("reposts when the previous sticky message has already been deleted", async () => {
+    const repository = {
+      get: vi.fn().mockResolvedValue({
+        guildId: "guild-1",
+        channelId: "channel-1",
+        messageId: "old-message",
+        messageType: "text",
+        title: "",
+        description: "sticky text",
+        delaySeconds: 5,
+        updatedAt: new Date().toISOString()
+      }),
+      delete: vi.fn().mockResolvedValue(undefined),
+      updateMessage: vi.fn().mockResolvedValue(undefined)
+    };
+    const channel = {
+      id: "channel-1",
+      messages: {
+        fetch: vi
+          .fn()
+          .mockRejectedValue(Object.assign(new Error("Unknown Message"), { code: 10008 }))
+      },
+      send: vi.fn().mockResolvedValue({ id: "new-message" })
+    };
+    const service = new StickyMessageService(
+      repository as unknown as StickyMessageRepository,
+      createLogger()
+    );
+
+    await expect(service.repost(channel)).resolves.toBe(true);
+
+    expect(channel.send).toHaveBeenCalledWith({ content: "sticky text" });
+    expect(repository.updateMessage).toHaveBeenCalledWith(
+      "channel-1",
+      "new-message",
+      expect.any(String)
+    );
+    expect(repository.delete).not.toHaveBeenCalled();
+  });
+
   it("builds an embed with optional title and default color", () => {
     const embed = createStickyEmbed({
       title: "Info",

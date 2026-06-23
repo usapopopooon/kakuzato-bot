@@ -28,6 +28,8 @@ type StickyDeletableMessage = {
   delete(): Promise<unknown>;
 };
 
+type StickyDeleteResult = "deleted" | "missing" | "failed";
+
 type StickyMessageServiceOptions = {
   setTimer?: (callback: () => void, delayMs: number) => NodeJS.Timeout;
   clearTimer?: (timer: NodeJS.Timeout) => void;
@@ -209,9 +211,9 @@ export class StickyMessageService {
       return false;
     }
 
-    const deleted = await this.deletePostedMessage(channel, config);
+    const deleteResult = await this.deletePostedMessage(channel, config);
 
-    if (!deleted) {
+    if (deleteResult === "failed") {
       await this.repository.delete(channelId);
       this.stickyChannels?.delete(channelId);
       return false;
@@ -298,27 +300,35 @@ export class StickyMessageService {
   private async deletePostedMessage(
     channel: StickySendableChannel,
     config: StickyMessageConfig | undefined
-  ): Promise<boolean> {
+  ): Promise<StickyDeleteResult> {
     if (!config?.messageId) {
-      return false;
+      return "missing";
     }
 
     const fetchMessage = getFetchMessage(channel);
 
     if (!fetchMessage) {
-      return false;
+      return "failed";
     }
 
     try {
       const oldMessage = await fetchMessage(config.messageId);
       await oldMessage.delete();
-      return true;
+      return "deleted";
     } catch (error) {
+      if (isUnknownMessageError(error)) {
+        this.logger.debug(
+          { channelId: config.channelId, messageId: config.messageId },
+          "Old sticky message is already missing"
+        );
+        return "missing";
+      }
+
       this.logger.warn(
         { error, channelId: config.channelId, messageId: config.messageId },
         "Failed to delete old sticky message"
       );
-      return false;
+      return "failed";
     }
   }
 }
@@ -371,4 +381,9 @@ function getFetchMessage(
   }
 
   return undefined;
+}
+
+function isUnknownMessageError(error: unknown): boolean {
+  const code = (error as { code?: unknown }).code;
+  return code === 10008 || code === "10008";
 }

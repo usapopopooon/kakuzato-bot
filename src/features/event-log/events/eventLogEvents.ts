@@ -91,7 +91,7 @@ function createMessageUpdateEvent(
   return {
     name: Events.MessageUpdate,
     execute: async (before, after) => {
-      if (!after.guild || after.author.bot) {
+      if (!after.guild || after.author?.bot) {
         return;
       }
 

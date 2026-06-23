@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -75,6 +75,25 @@ describe("EventLogConfigRepository", () => {
     await expect(repository.get("guild-1")).resolves.toMatchObject({
       channelId: "channel-1",
       enabled: false
+    });
+  });
+
+  it("continues processing writes after a previous write failure", async () => {
+    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-event-log-"));
+    tempDirs.push(dir);
+    const blocker = path.join(dir, "blocker");
+    const repository = new EventLogConfigRepository(path.join(blocker, "configs.json"));
+
+    await writeFile(blocker, "not a directory", "utf8");
+
+    await expect(repository.setChannel("guild-1", "channel-1")).rejects.toThrow();
+
+    await rm(blocker, { force: true });
+
+    await expect(repository.setChannel("guild-1", "channel-1")).resolves.toMatchObject({
+      guildId: "guild-1",
+      channelId: "channel-1",
+      enabled: true
     });
   });
 });
