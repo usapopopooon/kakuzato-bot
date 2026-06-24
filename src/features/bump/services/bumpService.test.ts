@@ -1,10 +1,55 @@
-import type { Client } from 'discord.js'
+import type { Client, Guild, Message } from 'discord.js'
 import { describe, expect, it, vi } from 'vitest'
-import { disboardBotId, dissokuBotId } from '../bumpServices'
-import { BumpService, detectBumpSuccess, type BumpMessageLike } from './bumpService'
+import { disboardBotId, dissokuBotId, type BumpServiceKey } from '../bumpServices'
+import {
+  BumpService,
+  detectBumpSuccess,
+  type BumpHistoryChannel,
+  type BumpMessageLike,
+  type BumpSendableChannel
+} from './bumpService'
+
+type BumpSendOptions = Parameters<BumpSendableChannel['send']>[0]
 
 function createMessage(input: BumpMessageLike): BumpMessageLike {
   return input
+}
+
+function createReminder(now: Date, overrides: Record<string, unknown> = {}) {
+  return {
+    id: 1,
+    guildId: 'guild-1',
+    channelId: 'channel-1',
+    serviceKey: 'DISBOARD',
+    remindAt: now.toISOString(),
+    isEnabled: true,
+    createdAt: now.toISOString(),
+    updatedAt: now.toISOString(),
+    ...overrides
+  }
+}
+
+function createHistoryMessage(input: {
+  authorId: string
+  createdAt: Date
+  guild: Guild
+  userId: string
+  content?: string
+  embeds?: BumpMessageLike['embeds']
+}): Message {
+  return {
+    author: { id: input.authorId },
+    content: input.content,
+    embeds: input.embeds ?? [],
+    createdAt: input.createdAt,
+    createdTimestamp: input.createdAt.getTime(),
+    guild: input.guild,
+    interactionMetadata: {
+      user: {
+        id: input.userId
+      }
+    }
+  } as unknown as Message
 }
 
 describe('bump detection', () => {
@@ -84,16 +129,7 @@ describe('bump detection', () => {
 describe('BumpService reminders', () => {
   it('keeps a claimed reminder scheduled for retry when sending fails', async () => {
     const now = new Date('2026-06-24T12:00:00.000Z')
-    const reminder = {
-      id: 1,
-      guildId: 'guild-1',
-      channelId: 'channel-1',
-      serviceKey: 'DISBOARD',
-      remindAt: now.toISOString(),
-      isEnabled: true,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString()
-    }
+    const reminder = createReminder(now)
     const repository = {
       getDueReminders: vi.fn().mockResolvedValue([reminder]),
       claimDueReminder: vi.fn().mockResolvedValue(true),
@@ -131,5 +167,135 @@ describe('BumpService reminders', () => {
       }),
       'Failed to send bump reminder; it will be retried'
     )
+  })
+
+  it('sends reminders without a mention when no notification role is configured', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z')
+    const reminder = createReminder(now)
+    const repository = {
+      getDueReminders: vi.fn().mockResolvedValue([reminder]),
+      claimDueReminder: vi.fn().mockResolvedValue(true),
+      clearReminder: vi.fn().mockResolvedValue(true)
+    }
+    const channel = {
+      id: 'channel-1',
+      send: vi.fn().mockResolvedValue({})
+    }
+    const client = {
+      channels: {
+        cache: new Map([['channel-1', channel]]),
+        fetch: vi.fn()
+      }
+    } as unknown as Client
+    const service = new BumpService(repository as never, { info: vi.fn() } as never)
+
+    await service.sendDueReminders(client, now)
+
+    const sent = channel.send.mock.calls[0]?.[0] as BumpSendOptions | undefined
+    expect(sent?.content).toBeUndefined()
+    expect(sent?.allowedMentions).toEqual({ parse: [] })
+    expect(repository.clearReminder).toHaveBeenCalled()
+  })
+
+  it('mentions only the configured notification role', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z')
+    const reminder = createReminder(now, { roleId: 'role-1' })
+    const repository = {
+      getDueReminders: vi.fn().mockResolvedValue([reminder]),
+      claimDueReminder: vi.fn().mockResolvedValue(true),
+      clearReminder: vi.fn().mockResolvedValue(true)
+    }
+    const channel = {
+      id: 'channel-1',
+      send: vi.fn().mockResolvedValue({})
+    }
+    const client = {
+      channels: {
+        cache: new Map([['channel-1', channel]]),
+        fetch: vi.fn()
+      }
+    } as unknown as Client
+    const service = new BumpService(repository as never, { info: vi.fn() } as never)
+
+    await service.sendDueReminders(client, now)
+
+    const sent = channel.send.mock.calls[0]?.[0] as BumpSendOptions | undefined
+    expect(sent?.content).toBe('<@&role-1>')
+    expect(sent?.allowedMentions).toEqual({ roles: ['role-1'], parse: [] })
+    expect(repository.clearReminder).toHaveBeenCalled()
+  })
+})
+
+describe('BumpService history sync', () => {
+  it('posts one bump detection notification for each reminder synced from history', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z')
+    const member = {
+      toString: () => '<@user-1>'
+    }
+    const guild = {
+      id: 'guild-1',
+      roles: {
+        cache: {
+          get: vi.fn()
+        }
+      },
+      members: {
+        cache: new Map([['user-1', member]]),
+        fetch: vi.fn()
+      }
+    } as unknown as Guild
+    const messages = new Map<string, Message>([
+      [
+        'disboard-message',
+        createHistoryMessage({
+          authorId: disboardBotId,
+          createdAt: new Date('2026-06-24T11:00:00.000Z'),
+          guild,
+          userId: 'user-1',
+          embeds: [{ description: 'サーバーの表示順をアップしました！' }]
+        })
+      ],
+      [
+        'dissoku-message',
+        createHistoryMessage({
+          authorId: dissokuBotId,
+          createdAt: new Date('2026-06-24T10:45:00.000Z'),
+          guild,
+          userId: 'user-1',
+          embeds: [{ title: 'サーバーをアップしたよ!' }]
+        })
+      ]
+    ])
+    const send = vi.fn<BumpSendableChannel['send']>().mockResolvedValue({})
+    const channel = {
+      id: 'channel-1',
+      send,
+      messages: {
+        fetch: vi.fn().mockResolvedValue(messages)
+      }
+    } as unknown as BumpHistoryChannel
+    const repository = {
+      upsertReminder: vi.fn(
+        (guildId: string, channelId: string, serviceKey: BumpServiceKey, remindAt: Date) =>
+          Promise.resolve(createReminder(remindAt, { guildId, channelId, serviceKey }))
+      )
+    }
+    const service = new BumpService(repository as never, { warn: vi.fn() } as never)
+
+    const result = await service.syncFromHistory(guild, channel, now)
+
+    expect(result.ok).toBe(true)
+    expect(repository.upsertReminder).toHaveBeenCalledTimes(2)
+    expect(send).toHaveBeenCalledTimes(2)
+    const sent = send.mock.calls.map((call) => call[0])
+    const firstEmbed = sent[0]?.embeds?.[0]?.toJSON()
+    const secondEmbed = sent[1]?.embeds?.[0]?.toJSON()
+    expect(firstEmbed?.title).toBe('Bump 検知')
+    expect(firstEmbed?.description).toContain('次の bump リマインドは')
+    expect(firstEmbed?.description).toContain('<@user-1> さんが')
+    expect(sent[0]?.components).toHaveLength(1)
+    expect(secondEmbed?.title).toBe('Bump 検知')
+    expect(secondEmbed?.description).toContain('次の bump リマインドは')
+    expect(sent[1]?.components).toHaveLength(1)
   })
 })

@@ -16,6 +16,9 @@ import { createBumpNotificationComponents, type BumpMessageComponent } from './b
 const defaultEmbedColor = 0x85e7ad
 const historySearchLimit = 100
 const reminderRetryDelayMs = 60_000
+const historyBumpActor: BumpDetectionActor = {
+  toString: () => '履歴内のユーザー'
+}
 
 type BumpEmbedLike = {
   title?: string | null
@@ -49,6 +52,16 @@ export type BumpHistoryChannel = BumpSendableChannel & {
   messages: {
     fetch(options: { limit: number }): Promise<ReadonlyMap<string, Message>>
   }
+}
+
+type BumpDetectionActor = {
+  toString(): string
+}
+
+type RecentBump = {
+  service: BumpServiceDefinition
+  message: Message
+  createdAt: Date
 }
 
 type ReminderLoopOptions = {
@@ -209,20 +222,13 @@ export class BumpService {
       return
     }
 
-    const roleName = resolveReminderRoleName(message.guild, reminder.roleId)
-    await message.channel.send({
-      embeds: [
-        createBumpDetectionEmbed({
-          service: detectedService,
-          member,
-          remindAt,
-          isEnabled: reminder.isEnabled,
-          roleName
-        })
-      ],
-      components: [
-        createBumpNotificationComponents(guildId, detectedService.key, reminder.isEnabled)
-      ]
+    await this.sendBumpDetectionNotification({
+      guild: message.guild,
+      channel: message.channel,
+      service: detectedService,
+      member,
+      remindAt,
+      reminder
     })
     this.logger.info(
       {
@@ -254,12 +260,12 @@ export class BumpService {
     const skipped: string[] = []
     const reminders: BumpReminder[] = []
 
-    for (const [serviceKey, bumpTime] of recentBumps) {
-      const remindAt = new Date(bumpTime.getTime() + bumpReminderDelayMs)
-      const service = getBumpServiceByKey(serviceKey)
+    for (const bump of recentBumps.values()) {
+      const remindAt = new Date(bump.createdAt.getTime() + bumpReminderDelayMs)
+      const serviceKey = bump.service.key
 
       if (remindAt <= now) {
-        skipped.push(service?.name ?? serviceKey)
+        skipped.push(bump.service.name)
         continue
       }
 
@@ -269,9 +275,18 @@ export class BumpService {
         serviceKey,
         remindAt
       )
+      const member = await resolveBumpMember(bump.message)
+      await this.sendBumpDetectionNotification({
+        guild,
+        channel,
+        service: bump.service,
+        member: member ?? historyBumpActor,
+        remindAt,
+        reminder
+      })
       const timestamp = Math.trunc(remindAt.getTime() / 1_000)
       configured.push(
-        `・${service?.name ?? serviceKey}: <t:${timestamp}:F> (通知: **${
+        `・${bump.service.name}: <t:${timestamp}:F> (通知: **${
           reminder.isEnabled ? '有効' : '無効'
         }**)`
       )
@@ -282,7 +297,7 @@ export class BumpService {
       return {
         ok: true,
         message: [
-          '履歴から次回通知を設定しました。',
+          '履歴から次回通知を設定し、通知メッセージを送信しました。',
           ...configured,
           skipped.length > 0 ? `次回可能時刻を過ぎていたため未設定: ${skipped.join(' / ')}` : ''
         ]
@@ -329,7 +344,9 @@ export class BumpService {
     }
   }
 
-  private async findRecentBumps(channel: BumpHistoryChannel): Promise<Map<BumpServiceKey, Date>> {
+  private async findRecentBumps(
+    channel: BumpHistoryChannel
+  ): Promise<Map<BumpServiceKey, RecentBump>> {
     const messages = await channel.messages.fetch({ limit: historySearchLimit }).catch((error) => {
       this.logger.warn({ error, channelId: channel.id }, 'Failed to fetch bump channel history')
       return undefined
@@ -339,7 +356,7 @@ export class BumpService {
       return new Map()
     }
 
-    const latest = new Map<BumpServiceKey, Date>()
+    const latest = new Map<BumpServiceKey, RecentBump>()
     const sortedMessages = [...messages.values()].sort(
       (left, right) => right.createdTimestamp - left.createdTimestamp
     )
@@ -351,7 +368,11 @@ export class BumpService {
         continue
       }
 
-      latest.set(service.key, message.createdAt)
+      latest.set(service.key, {
+        service,
+        message,
+        createdAt: message.createdAt
+      })
 
       if (latest.size === bumpServices.length) {
         break
@@ -359,6 +380,36 @@ export class BumpService {
     }
 
     return latest
+  }
+
+  private async sendBumpDetectionNotification(input: {
+    guild: Guild
+    channel: BumpSendableChannel
+    service: BumpServiceDefinition
+    member: BumpDetectionActor
+    remindAt: Date
+    reminder: BumpReminder
+  }): Promise<void> {
+    const roleName = resolveReminderRoleName(input.guild, input.reminder.roleId)
+
+    await input.channel.send({
+      embeds: [
+        createBumpDetectionEmbed({
+          service: input.service,
+          member: input.member,
+          remindAt: input.remindAt,
+          isEnabled: input.reminder.isEnabled,
+          notificationTarget: formatNotificationTarget(input.reminder.roleId, roleName)
+        })
+      ],
+      components: [
+        createBumpNotificationComponents(
+          input.reminder.guildId,
+          input.service.key,
+          input.reminder.isEnabled
+        )
+      ]
+    })
   }
 
   private async sendReminder(client: Client, reminder: BumpReminder): Promise<void> {
@@ -376,13 +427,7 @@ export class BumpService {
       return
     }
 
-    const guild = 'guild' in channel ? (channel as { guild?: Guild }).guild : undefined
-    const target = guild
-      ? resolveReminderMention(guild, reminder.roleId)
-      : {
-          content: '@here',
-          allowedMentions: { parse: ['everyone' as const] }
-        }
+    const target = resolveReminderMention(reminder.roleId)
     const service = getBumpServiceByKey(reminder.serviceKey)
 
     await channel.send({
@@ -449,22 +494,21 @@ export function createBumpDetectionEmbed(input: {
   member: { toString(): string }
   remindAt: Date
   isEnabled: boolean
-  roleName?: string
+  notificationTarget: string
 }): EmbedBuilder {
   const timestamp = Math.trunc(input.remindAt.getTime() / 1_000)
-  const displayRole = input.roleName ?? targetBumpRoleName
   const description = input.isEnabled
     ? [
         `${input.member.toString()} さんが **${input.service.name}** を bump しました！`,
         '',
         `次の bump リマインドは <t:${timestamp}:t> に送信します。`,
-        `現在の通知先: \`@${displayRole}\``
+        `現在の通知先: ${input.notificationTarget}`
       ].join('\n')
     : [
         `${input.member.toString()} さんが **${input.service.name}** を bump しました！`,
         '',
         '通知は現在 **無効** です。',
-        `現在の通知先: \`@${displayRole}\``
+        `現在の通知先: ${input.notificationTarget}`
       ].join('\n')
 
   return new EmbedBuilder()
@@ -544,31 +588,34 @@ function resolveReminderRoleName(guild: Guild, roleId: string | undefined): stri
   return guild.roles.cache.get(roleId)?.name
 }
 
-function resolveReminderMention(
-  guild: Guild,
-  roleId: string | undefined
-): {
-  content: string
+function formatNotificationTarget(
+  roleId: string | undefined,
+  roleName: string | undefined
+): string {
+  if (!roleId) {
+    return 'メンションなし'
+  }
+
+  return roleName ? `<@&${roleId}> (${roleName})` : `<@&${roleId}>`
+}
+
+function resolveReminderMention(roleId: string | undefined): {
+  content?: string
   allowedMentions: { roles?: string[]; parse?: ('everyone' | 'roles' | 'users')[] }
 } {
-  const customRole = roleId ? guild.roles.cache.get(roleId) : undefined
-  const targetRole =
-    customRole ?? guild.roles.cache.find((role) => role.name === targetBumpRoleName)
-
-  if (targetRole) {
+  if (roleId) {
     return {
-      content: targetRole.toString(),
+      content: `<@&${roleId}>`,
       allowedMentions: {
-        roles: [targetRole.id],
+        roles: [roleId],
         parse: []
       }
     }
   }
 
   return {
-    content: '@here',
     allowedMentions: {
-      parse: ['everyone']
+      parse: []
     }
   }
 }

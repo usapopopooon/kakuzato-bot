@@ -7,7 +7,7 @@ import {
   type MessageComponentInteraction
 } from 'discord.js'
 import type { DiscordCommand, DiscordComponentHandler } from '../../../platform/discord/botModule'
-import { bumpServices, getBumpServiceByKey, targetBumpRoleName } from '../bumpServices'
+import { bumpServices, getBumpServiceByKey } from '../bumpServices'
 import type { BumpConfig, BumpReminder } from '../repositories/bumpRepository'
 import {
   bumpComponentCustomIdPrefix,
@@ -18,6 +18,19 @@ import {
 import { isBumpHistoryChannel, type BumpService } from '../services/bumpService'
 
 const defaultEmbedColor = 0x85e7ad
+
+type BumpRoleDisplay = {
+  name: string
+  toString(): string
+}
+
+type BumpRoleDisplayGuild = {
+  roles: {
+    cache: {
+      get(id: string): BumpRoleDisplay | undefined
+    }
+  }
+}
 
 export function createBumpCommand(service: BumpService): DiscordCommand {
   return {
@@ -35,11 +48,6 @@ export function createBumpCommand(service: BumpService): DiscordCommand {
       .addSubcommand((subcommand) =>
         subcommand
           .setName('sync')
-          .setDescription('監視チャンネル履歴から前回 bump を判定して次回通知を設定します')
-      )
-      .addSubcommand((subcommand) =>
-        subcommand
-          .setName('sync-from-history')
           .setDescription('監視チャンネル履歴から前回 bump を判定して次回通知を設定します')
       )
       .addSubcommand((subcommand) =>
@@ -88,7 +96,7 @@ async function executeBumpCommand(
     return
   }
 
-  if (subcommand === 'sync' || subcommand === 'sync-from-history') {
+  if (subcommand === 'sync') {
     await handleSync(interaction, service)
     return
   }
@@ -114,7 +122,7 @@ async function handleSetup(
   const reminders = await service.listRemindersByGuild(interaction.guildId)
 
   await interaction.editReply({
-    embeds: [createBumpSetupEmbed(config, sync.message)],
+    embeds: [createBumpSetupEmbed(interaction.guild, config, reminders, sync.message)],
     components: createBumpManagementComponents(interaction.guildId, reminders)
   })
 }
@@ -241,19 +249,28 @@ async function executeBumpComponent(
     }
 
     const roleId = interaction.values[0]
-    const role = interaction.guild.roles.cache.get(roleId)
-    await service.setReminderRole(payload.guildId, payload.serviceKey, roleId)
+    const reminder = await service.setReminderRole(payload.guildId, payload.serviceKey, roleId)
+    const reminders = await service.listRemindersByGuild(payload.guildId)
+    const serviceDefinition = getBumpServiceByKey(payload.serviceKey)
     await interaction.update({
-      content: `通知先ロールを **${role?.name ?? roleId}** に変更しました。`,
-      components: []
+      content: `**${serviceDefinition?.name ?? payload.serviceKey}** の通知先を ${formatNotificationTarget(
+        interaction.guild,
+        reminder.roleId
+      )} に変更しました。`,
+      components: createBumpManagementComponents(payload.guildId, reminders)
     })
     return
   }
 
-  await service.setReminderRole(payload.guildId, payload.serviceKey, undefined)
+  const reminder = await service.setReminderRole(payload.guildId, payload.serviceKey, undefined)
+  const reminders = await service.listRemindersByGuild(payload.guildId)
+  const serviceDefinition = getBumpServiceByKey(payload.serviceKey)
   await interaction.update({
-    content: `通知先ロールを **${targetBumpRoleName}** (デフォルト) に戻しました。`,
-    components: []
+    content: `**${serviceDefinition?.name ?? payload.serviceKey}** の通知先を ${formatNotificationTarget(
+      interaction.guild,
+      reminder.roleId
+    )} に戻しました。`,
+    components: createBumpManagementComponents(payload.guildId, reminders)
   })
 }
 
@@ -324,13 +341,25 @@ export function createBumpManagementComponents(
   })
 }
 
-function createBumpSetupEmbed(config: BumpConfig, syncMessage: string): EmbedBuilder {
+function createBumpSetupEmbed(
+  guild: BumpRoleDisplayGuild,
+  config: BumpConfig,
+  reminders: readonly BumpReminder[],
+  syncMessage: string
+): EmbedBuilder {
+  const roleStatuses = bumpServices.map((service) => {
+    const reminder = reminders.find((candidate) => candidate.serviceKey === service.key)
+    return `・${service.name}: ${formatNotificationTarget(guild, reminder?.roleId)}`
+  })
+
   return new EmbedBuilder()
     .setTitle('Bump 監視を開始しました')
     .setDescription(
       [
         `監視チャンネル: <#${config.channelId}>`,
-        `現在の通知先: \`@${targetBumpRoleName}\``,
+        '',
+        '**通知先:**',
+        ...roleStatuses,
         '',
         `監視対象サービス: ${bumpServices.map((service) => service.name).join(', ')}`,
         'bump 成功を検知し、2時間後にリマインドを送信します。',
@@ -344,7 +373,7 @@ function createBumpSetupEmbed(config: BumpConfig, syncMessage: string): EmbedBui
 }
 
 function createBumpStatusEmbed(
-  guild: { roles: { cache: { get(id: string): { name: string } | undefined } } },
+  guild: BumpRoleDisplayGuild,
   config: BumpConfig | undefined,
   reminders: readonly BumpReminder[]
 ): EmbedBuilder {
@@ -386,33 +415,27 @@ function createBumpStatusEmbed(
 
 function formatServiceStatus(
   serviceName: string,
-  guild: { roles: { cache: { get(id: string): { name: string } | undefined } } },
+  guild: BumpRoleDisplayGuild,
   reminder: BumpReminder | undefined
 ): string {
-  const roleDisplay = formatReminderRole(guild, reminder?.roleId)
+  const targetDisplay = formatNotificationTarget(guild, reminder?.roleId)
   const notifyStatus = reminder ? (reminder.isEnabled ? '有効' : '無効') : '有効 (デフォルト)'
   const nextBump = formatNextBump(reminder?.remindAt)
 
   return [
     `・${serviceName}:`,
     `  通知: **${notifyStatus}**`,
-    `  通知ロール: ${roleDisplay}`,
-    `  次回bump可能時刻: ${nextBump}`
+    `  通知先: ${targetDisplay}`,
+    `  次回 bump 可能時刻: ${nextBump}`
   ].join('\n')
 }
 
-function formatReminderRole(
-  guild: { roles: { cache: { get(id: string): { name: string } | undefined } } },
-  roleId: string | undefined
-): string {
-  if (!roleId) {
-    return `\`@${targetBumpRoleName}\` (デフォルト)`
+function formatNotificationTarget(guild: BumpRoleDisplayGuild, roleId: string | undefined): string {
+  if (roleId) {
+    return guild.roles.cache.get(roleId)?.toString() ?? `<@&${roleId}>`
   }
 
-  const role = guild.roles.cache.get(roleId)
-  return role
-    ? `\`@${role.name}\``
-    : `\`@${targetBumpRoleName}\` (デフォルト, カスタムロール未解決)`
+  return 'メンションなし (デフォルト)'
 }
 
 function formatNextBump(remindAt: string | undefined): string {
