@@ -69,6 +69,24 @@ DISBOARD とディス速報の bump 成功を検知し、2 時間後にリマイ
 
 通知メッセージや `/bump status` に表示されるボタンから、サービスごとの通知 ON/OFF と通知先ロールを変更できます。ロール未設定時は `Server Bumper`、該当ロールがない場合は `@here` で通知します。設定とリマインダーは PostgreSQL に保存されます。
 
+## `/automod`
+
+サーバー参加時の AutoMod を管理します。アバター未設定ユーザーと、作成から指定期間未満のアカウントを検知し、BAN/KICK/タイムアウトを実行できます。
+
+| コマンド                       | 引数                                   | 説明                                                                  |
+| ------------------------------ | -------------------------------------- | --------------------------------------------------------------------- |
+| `/automod log set`             | `channel`                              | AutoMod 実行ログの送信先チャンネルを設定します。                      |
+| `/automod log disable`         | なし                                   | AutoMod 実行ログのチャンネル送信を無効にします。DB 保存は継続します。 |
+| `/automod no-avatar set`       | `action`, `timeout_minutes`            | アバター未設定ユーザーへの AutoMod を有効にします。                   |
+| `/automod no-avatar disable`   | なし                                   | アバター未設定ルールを無効にします。                                  |
+| `/automod account-age set`     | `minutes`, `action`, `timeout_minutes` | 作成から指定分数未満のアカウントへの AutoMod を有効にします。         |
+| `/automod account-age disable` | なし                                   | アカウント作成期間ルールを無効にします。                              |
+| `/automod status`              | なし                                   | AutoMod のログ送信先とルール設定を確認します。                        |
+
+`action` は `BAN`、`KICK`、`タイムアウト` から選択します。`timeout_minutes` は action がタイムアウトの場合だけ使われ、省略時は 60 分です。
+
+設定時に、選択した action に必要な Bot 権限も確認します。AutoMod の設定、ルール、実行ログは PostgreSQL に保存されます。実行ログには成功/失敗ステータスも記録されます。
+
 ## `/eventlog`
 
 サーバー内イベントのログ送信を管理します。
@@ -102,6 +120,8 @@ DISBOARD とディス速報の bump 成功を検知し、2 時間後にリマイ
 /welcome test
 /sticky text channel:#notice
 /bump setup
+/automod log set channel:#server-log
+/automod account-age set minutes:1440 action:BAN
 /eventlog set channel:#server-log
 /eventlog test
 ```

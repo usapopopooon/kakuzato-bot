@@ -12,6 +12,8 @@ import {
 } from '../platform/discord/registerCommands'
 import { registerBotModules } from '../platform/discord/registerBotModules'
 import { createLogger } from '../platform/logger/logger'
+import { createAutoModModule } from '../features/automod/autoMod.module'
+import { AutoModJoinBlocklist } from '../features/automod/services/autoModJoinBlocklist'
 import { createBotActivityModule } from '../features/bot-activity/botActivity.module'
 import { createEventLogModule } from '../features/event-log/eventLog.module'
 import { createStickyModule } from '../features/sticky/sticky.module'
@@ -26,11 +28,13 @@ async function main(): Promise<void> {
   const prisma = createPrismaClient(config.databaseUrl)
   await connectDatabase(prisma, logger)
   const client = createDiscordClient()
+  const autoModJoinBlocklist = new AutoModJoinBlocklist()
 
   const modules = [
     createBotActivityModule({ logger, prisma }),
+    createAutoModModule({ logger, prisma, joinBlocklist: autoModJoinBlocklist }),
     createBumpModule({ logger, prisma }),
-    createWelcomeModule({ logger, prisma }),
+    createWelcomeModule({ logger, prisma, joinBlocklist: autoModJoinBlocklist }),
     createStickyModule({ logger, prisma }),
     createEventLogModule({ logger, prisma })
   ]

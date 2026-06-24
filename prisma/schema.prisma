@@ -16,6 +16,29 @@ enum BumpServiceKey {
   DISSOKU
 }
 
+enum AutoModRuleType {
+  NO_AVATAR
+  ACCOUNT_AGE
+}
+
+enum AutoModAction {
+  BAN
+  KICK
+  TIMEOUT
+}
+
+enum AutoModActionTaken {
+  BANNED
+  KICKED
+  TIMED_OUT
+}
+
+enum AutoModLogStatus {
+  PENDING
+  SUCCEEDED
+  FAILED
+}
+
 model BotActivityConfig {
   id           String   @id @default("global")
   activityName String   @db.VarChar(128)
@@ -77,4 +100,48 @@ model BumpReminder {
   @@unique([guildId, serviceKey])
   @@index([guildId])
   @@index([isEnabled, remindAt])
+}
+
+model AutoModConfig {
+  guildId      String   @id
+  logChannelId String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model AutoModRule {
+  id                     Int             @id @default(autoincrement())
+  guildId                String
+  ruleType               AutoModRuleType
+  isEnabled              Boolean         @default(true)
+  action                 AutoModAction   @default(BAN)
+  thresholdSeconds       Int?
+  timeoutDurationSeconds Int?
+  createdAt              DateTime        @default(now())
+  updatedAt              DateTime        @updatedAt
+  logs                   AutoModLog[]
+
+  @@unique([guildId, ruleType])
+  @@index([guildId])
+  @@index([guildId, isEnabled])
+}
+
+model AutoModLog {
+  id            Int                @id @default(autoincrement())
+  guildId       String
+  userId        String
+  username      String
+  ruleId        Int
+  actionTaken   AutoModActionTaken
+  reason        String             @db.Text
+  status        AutoModLogStatus   @default(PENDING)
+  dedupeKey     String             @unique
+  failureReason String?            @db.Text
+  completedAt   DateTime?
+  createdAt     DateTime           @default(now())
+  rule          AutoModRule        @relation(fields: [ruleId], references: [id], onDelete: Cascade)
+
+  @@index([guildId, createdAt])
+  @@index([guildId, userId, createdAt])
+  @@index([ruleId])
 }
