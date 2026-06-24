@@ -1,33 +1,33 @@
-import type { AppPrismaClient } from "../../../platform/database/prisma";
+import type { AppPrismaClient } from '../../../platform/database/prisma'
 
-export const defaultBotActivityName = "サーバーを管理中。";
-const botActivityConfigId = "global";
+export const defaultBotActivityName = 'サーバーを管理中。'
+const botActivityConfigId = 'global'
 
 export type BotActivityConfig = {
-  activityName: string;
-  updatedAt: string;
-};
+  activityName: string
+  updatedAt: string
+}
 
 export class BotActivityRepository {
-  private readonly prisma: Pick<AppPrismaClient, "botActivityConfig">;
+  private readonly prisma: Pick<AppPrismaClient, 'botActivityConfig'>
 
-  constructor(prisma: Pick<AppPrismaClient, "botActivityConfig">) {
-    this.prisma = prisma;
+  constructor(prisma: Pick<AppPrismaClient, 'botActivityConfig'>) {
+    this.prisma = prisma
   }
 
   async get(): Promise<BotActivityConfig> {
     const config = await this.prisma.botActivityConfig.findUnique({
       where: { id: botActivityConfigId }
-    });
+    })
 
     if (!config) {
       return {
         activityName: defaultBotActivityName,
         updatedAt: new Date(0).toISOString()
-      };
+      }
     }
 
-    return toBotActivityConfig(config);
+    return toBotActivityConfig(config)
   }
 
   async setName(activityName: string): Promise<BotActivityConfig> {
@@ -40,13 +40,13 @@ export class BotActivityRepository {
       update: {
         activityName
       }
-    });
+    })
 
-    return toBotActivityConfig(config);
+    return toBotActivityConfig(config)
   }
 
   async reset(): Promise<BotActivityConfig> {
-    return this.setName(defaultBotActivityName);
+    return this.setName(defaultBotActivityName)
   }
 }
 
@@ -54,5 +54,5 @@ function toBotActivityConfig(config: { activityName: string; updatedAt: Date }):
   return {
     activityName: config.activityName,
     updatedAt: config.updatedAt.toISOString()
-  };
+  }
 }

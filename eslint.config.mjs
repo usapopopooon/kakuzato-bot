@@ -1,17 +1,17 @@
-import js from "@eslint/js";
-import eslintConfigPrettier from "eslint-config-prettier";
-import globals from "globals";
-import tseslint from "typescript-eslint";
+import js from '@eslint/js'
+import eslintConfigPrettier from 'eslint-config-prettier'
+import globals from 'globals'
+import tseslint from 'typescript-eslint'
 
 export default tseslint.config(
   {
-    ignores: ["dist/**", "node_modules/**", "coverage/**", "*.config.mjs", "eslint.config.mjs"]
+    ignores: ['dist/**', 'node_modules/**', 'coverage/**', '*.config.mjs', 'eslint.config.mjs']
   },
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
   ...tseslint.configs.stylisticTypeChecked,
   {
-    files: ["**/*.ts"],
+    files: ['**/*.ts'],
     languageOptions: {
       globals: {
         ...globals.node
@@ -22,20 +22,27 @@ export default tseslint.config(
       }
     },
     rules: {
-      "@typescript-eslint/consistent-type-imports": [
-        "error",
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
         {
-          prefer: "type-imports"
+          prefer: 'type-imports'
         }
       ],
-      "@typescript-eslint/consistent-type-definitions": ["error", "type"],
-      "@typescript-eslint/no-misused-promises": [
-        "error",
+      '@typescript-eslint/consistent-type-definitions': ['error', 'type'],
+      '@typescript-eslint/no-misused-promises': [
+        'error',
         {
           checksVoidReturn: false
         }
       ]
     }
   },
-  eslintConfigPrettier
-);
+  eslintConfigPrettier,
+  {
+    files: ['**/*.ts'],
+    rules: {
+      quotes: ['error', 'single', { avoidEscape: true }],
+      semi: ['error', 'never']
+    }
+  }
+)

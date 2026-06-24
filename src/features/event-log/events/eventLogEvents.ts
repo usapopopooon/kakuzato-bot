@@ -1,8 +1,8 @@
-import { AuditLogEvent, Events, Guild, type GuildBasedChannel } from "discord.js";
+import { AuditLogEvent, Events, Guild, type GuildBasedChannel } from 'discord.js'
 import type {
   AnyDiscordEventHandler,
   DiscordEventHandler
-} from "../../../platform/discord/botModule";
+} from '../../../platform/discord/botModule'
 import {
   createChannelEmbed,
   createChannelUpdatedEmbed,
@@ -28,10 +28,10 @@ import {
   createThreadUpdatedEmbed,
   createVoiceStateEmbed,
   type EventLogAuditDetails
-} from "../services/eventLogEmbeds";
-import type { EventLogService } from "../services/eventLogService";
+} from '../services/eventLogEmbeds'
+import type { EventLogService } from '../services/eventLogService'
 
-type TargetMatcher = (target: unknown) => boolean;
+type TargetMatcher = (target: unknown) => boolean
 
 export function createEventLogEvents(service: EventLogService): AnyDiscordEventHandler[] {
   return [
@@ -59,7 +59,7 @@ export function createEventLogEvents(service: EventLogService): AnyDiscordEventH
     createEmojiCreateEvent(service),
     createEmojiDeleteEvent(service),
     createEmojiUpdateEvent(service)
-  ];
+  ]
 }
 
 function createMessageDeleteEvent(
@@ -69,7 +69,7 @@ function createMessageDeleteEvent(
     name: Events.MessageDelete,
     execute: async (message) => {
       if (!message.guild || message.author?.bot) {
-        return;
+        return
       }
 
       const audit = message.author
@@ -78,11 +78,11 @@ function createMessageDeleteEvent(
             AuditLogEvent.MessageDelete,
             targetHasId(message.author.id)
           )
-        : undefined;
+        : undefined
 
-      await service.send(message.guild, "message", createMessageDeletedEmbed(message, audit));
+      await service.send(message.guild, 'message', createMessageDeletedEmbed(message, audit))
     }
-  };
+  }
 }
 
 function createMessageUpdateEvent(
@@ -92,16 +92,16 @@ function createMessageUpdateEvent(
     name: Events.MessageUpdate,
     execute: async (before, after) => {
       if (!after.guild || after.author?.bot) {
-        return;
+        return
       }
 
-      const embed = createMessageEditedEmbed(before, after);
+      const embed = createMessageEditedEmbed(before, after)
 
       if (embed) {
-        await service.send(after.guild, "message", embed);
+        await service.send(after.guild, 'message', embed)
       }
     }
-  };
+  }
 }
 
 function createMessageBulkDeleteEvent(
@@ -114,15 +114,15 @@ function createMessageBulkDeleteEvent(
         channel.guild,
         AuditLogEvent.MessageBulkDelete,
         targetHasId(channel.id)
-      );
+      )
 
       await service.send(
         channel.guild,
-        "message",
+        'message',
         createMessagesPurgedEmbed(messages, channel, audit)
-      );
+      )
     }
-  };
+  }
 }
 
 function createGuildMemberAddEvent(
@@ -132,12 +132,12 @@ function createGuildMemberAddEvent(
     name: Events.GuildMemberAdd,
     execute: async (member) => {
       if (member.user.bot) {
-        return;
+        return
       }
 
-      await service.send(member.guild, "member", createMemberJoinedEmbed(member));
+      await service.send(member.guild, 'member', createMemberJoinedEmbed(member))
     }
-  };
+  }
 }
 
 function createGuildMemberRemoveEvent(
@@ -147,23 +147,23 @@ function createGuildMemberRemoveEvent(
     name: Events.GuildMemberRemove,
     execute: async (member) => {
       if (member.user.bot) {
-        return;
+        return
       }
 
       const kick = await findRecentAuditLogEntry(
         member.guild,
         AuditLogEvent.MemberKick,
         targetHasId(member.id)
-      );
+      )
 
       if (kick) {
-        await service.send(member.guild, "moderation", createMemberKickedEmbed(member, kick));
-        return;
+        await service.send(member.guild, 'moderation', createMemberKickedEmbed(member, kick))
+        return
       }
 
-      await service.send(member.guild, "member", createMemberLeftEmbed(member));
+      await service.send(member.guild, 'member', createMemberLeftEmbed(member))
     }
-  };
+  }
 }
 
 function createGuildMemberUpdateEvent(
@@ -173,42 +173,42 @@ function createGuildMemberUpdateEvent(
     name: Events.GuildMemberUpdate,
     execute: async (before, after) => {
       if (after.user.bot) {
-        return;
+        return
       }
 
       const memberAudit = await findRecentAuditLogEntry(
         after.guild,
         AuditLogEvent.MemberUpdate,
         targetHasId(after.id)
-      );
+      )
       const roleAudit = await findRecentAuditLogEntry(
         after.guild,
         AuditLogEvent.MemberRoleUpdate,
         targetHasId(after.id)
-      );
+      )
       const timeoutEmbed =
         !before.communicationDisabledUntilTimestamp && after.communicationDisabledUntilTimestamp
           ? createMemberTimeoutEmbed(after, memberAudit)
-          : undefined;
+          : undefined
       const timeoutRemovedEmbed =
         before.communicationDisabledUntilTimestamp && !after.communicationDisabledUntilTimestamp
           ? createMemberTimeoutRemovedEmbed(after, memberAudit)
-          : undefined;
-      const roleEmbed = createMemberRolesChangedEmbed(before, after, roleAudit);
-      const nicknameEmbed = createMemberNicknameChangedEmbed(before, after, memberAudit);
+          : undefined
+      const roleEmbed = createMemberRolesChangedEmbed(before, after, roleAudit)
+      const nicknameEmbed = createMemberNicknameChangedEmbed(before, after, memberAudit)
 
       for (const [category, embed] of [
-        ["moderation", timeoutEmbed],
-        ["moderation", timeoutRemovedEmbed],
-        ["member", roleEmbed],
-        ["member", nicknameEmbed]
+        ['moderation', timeoutEmbed],
+        ['moderation', timeoutRemovedEmbed],
+        ['member', roleEmbed],
+        ['member', nicknameEmbed]
       ] as const) {
         if (embed) {
-          await service.send(after.guild, category, embed);
+          await service.send(after.guild, category, embed)
         }
       }
     }
-  };
+  }
 }
 
 function createGuildBanAddEvent(
@@ -218,22 +218,18 @@ function createGuildBanAddEvent(
     name: Events.GuildBanAdd,
     execute: async (ban) => {
       if (ban.user.bot) {
-        return;
+        return
       }
 
       const audit = await findRecentAuditLogEntry(
         ban.guild,
         AuditLogEvent.MemberBanAdd,
         targetHasId(ban.user.id)
-      );
+      )
 
-      await service.send(
-        ban.guild,
-        "moderation",
-        createMemberBanEmbed(ban.user, audit, ban.reason)
-      );
+      await service.send(ban.guild, 'moderation', createMemberBanEmbed(ban.user, audit, ban.reason))
     }
-  };
+  }
 }
 
 function createGuildBanRemoveEvent(
@@ -243,18 +239,18 @@ function createGuildBanRemoveEvent(
     name: Events.GuildBanRemove,
     execute: async (ban) => {
       if (ban.user.bot) {
-        return;
+        return
       }
 
       const audit = await findRecentAuditLogEntry(
         ban.guild,
         AuditLogEvent.MemberBanRemove,
         targetHasId(ban.user.id)
-      );
+      )
 
-      await service.send(ban.guild, "moderation", createMemberUnbanEmbed(ban.user, audit));
+      await service.send(ban.guild, 'moderation', createMemberUnbanEmbed(ban.user, audit))
     }
-  };
+  }
 }
 
 function createChannelCreateEvent(
@@ -267,15 +263,15 @@ function createChannelCreateEvent(
         channel.guild,
         AuditLogEvent.ChannelCreate,
         targetHasId(channel.id)
-      );
+      )
 
       await service.send(
         channel.guild,
-        "server",
-        createChannelEmbed("チャンネル作成", "channel_create", channel, audit)
-      );
+        'server',
+        createChannelEmbed('チャンネル作成', 'channel_create', channel, audit)
+      )
     }
-  };
+  }
 }
 
 function createChannelDeleteEvent(
@@ -285,22 +281,22 @@ function createChannelDeleteEvent(
     name: Events.ChannelDelete,
     execute: async (channel) => {
       if (!isGuildBasedChannel(channel)) {
-        return;
+        return
       }
 
       const audit = await findRecentAuditLogEntry(
         channel.guild,
         AuditLogEvent.ChannelDelete,
         targetHasId(channel.id)
-      );
+      )
 
       await service.send(
         channel.guild,
-        "server",
-        createChannelEmbed("チャンネル削除", "channel_delete", channel, audit)
-      );
+        'server',
+        createChannelEmbed('チャンネル削除', 'channel_delete', channel, audit)
+      )
     }
-  };
+  }
 }
 
 function createChannelUpdateEvent(
@@ -310,21 +306,21 @@ function createChannelUpdateEvent(
     name: Events.ChannelUpdate,
     execute: async (before, after) => {
       if (!isGuildBasedChannel(before) || !isGuildBasedChannel(after)) {
-        return;
+        return
       }
 
       const audit = await findRecentAuditLogEntry(
         after.guild,
         AuditLogEvent.ChannelUpdate,
         targetHasId(after.id)
-      );
-      const embed = createChannelUpdatedEmbed(before, after, audit);
+      )
+      const embed = createChannelUpdatedEmbed(before, after, audit)
 
       if (embed) {
-        await service.send(after.guild, "server", embed);
+        await service.send(after.guild, 'server', embed)
       }
     }
-  };
+  }
 }
 
 function createRoleCreateEvent(
@@ -337,14 +333,14 @@ function createRoleCreateEvent(
         role.guild,
         AuditLogEvent.RoleCreate,
         targetHasId(role.id)
-      );
+      )
       await service.send(
         role.guild,
-        "server",
-        createRoleEmbed("ロール作成", "role_create", role, audit)
-      );
+        'server',
+        createRoleEmbed('ロール作成', 'role_create', role, audit)
+      )
     }
-  };
+  }
 }
 
 function createRoleDeleteEvent(
@@ -357,14 +353,14 @@ function createRoleDeleteEvent(
         role.guild,
         AuditLogEvent.RoleDelete,
         targetHasId(role.id)
-      );
+      )
       await service.send(
         role.guild,
-        "server",
-        createRoleEmbed("ロール削除", "role_delete", role, audit)
-      );
+        'server',
+        createRoleEmbed('ロール削除', 'role_delete', role, audit)
+      )
     }
-  };
+  }
 }
 
 function createRoleUpdateEvent(
@@ -377,14 +373,14 @@ function createRoleUpdateEvent(
         after.guild,
         AuditLogEvent.RoleUpdate,
         targetHasId(after.id)
-      );
-      const embed = createRoleUpdatedEmbed(before, after, audit);
+      )
+      const embed = createRoleUpdatedEmbed(before, after, audit)
 
       if (embed) {
-        await service.send(after.guild, "server", embed);
+        await service.send(after.guild, 'server', embed)
       }
     }
-  };
+  }
 }
 
 function createVoiceStateUpdateEvent(
@@ -393,13 +389,13 @@ function createVoiceStateUpdateEvent(
   return {
     name: Events.VoiceStateUpdate,
     execute: async (before, after) => {
-      const embed = createVoiceStateEmbed(before, after);
+      const embed = createVoiceStateEmbed(before, after)
 
       if (embed) {
-        await service.send(after.guild, "voice", embed);
+        await service.send(after.guild, 'voice', embed)
       }
     }
-  };
+  }
 }
 
 function createInviteCreateEvent(
@@ -409,12 +405,12 @@ function createInviteCreateEvent(
     name: Events.InviteCreate,
     execute: async (invite) => {
       if (!(invite.guild instanceof Guild)) {
-        return;
+        return
       }
 
-      await service.send(invite.guild, "server", createInviteCreatedEmbed(invite));
+      await service.send(invite.guild, 'server', createInviteCreatedEmbed(invite))
     }
-  };
+  }
 }
 
 function createInviteDeleteEvent(
@@ -424,18 +420,18 @@ function createInviteDeleteEvent(
     name: Events.InviteDelete,
     execute: async (invite) => {
       if (!(invite.guild instanceof Guild)) {
-        return;
+        return
       }
 
       const audit = await findRecentAuditLogEntry(
         invite.guild,
         AuditLogEvent.InviteDelete,
         targetHasCode(invite.code)
-      );
+      )
 
-      await service.send(invite.guild, "server", createInviteDeletedEmbed(invite, audit));
+      await service.send(invite.guild, 'server', createInviteDeletedEmbed(invite, audit))
     }
-  };
+  }
 }
 
 function createThreadCreateEvent(
@@ -448,15 +444,15 @@ function createThreadCreateEvent(
         thread.guild,
         AuditLogEvent.ThreadCreate,
         targetHasId(thread.id)
-      );
+      )
 
       await service.send(
         thread.guild,
-        "server",
-        createThreadEmbed("スレッド作成", "thread_create", thread, audit)
-      );
+        'server',
+        createThreadEmbed('スレッド作成', 'thread_create', thread, audit)
+      )
     }
-  };
+  }
 }
 
 function createThreadDeleteEvent(
@@ -469,15 +465,15 @@ function createThreadDeleteEvent(
         thread.guild,
         AuditLogEvent.ThreadDelete,
         targetHasId(thread.id)
-      );
+      )
 
       await service.send(
         thread.guild,
-        "server",
-        createThreadEmbed("スレッド削除", "thread_delete", thread, audit)
-      );
+        'server',
+        createThreadEmbed('スレッド削除', 'thread_delete', thread, audit)
+      )
     }
-  };
+  }
 }
 
 function createThreadUpdateEvent(
@@ -490,14 +486,14 @@ function createThreadUpdateEvent(
         after.guild,
         AuditLogEvent.ThreadUpdate,
         targetHasId(after.id)
-      );
-      const embed = createThreadUpdatedEmbed(before, after, audit);
+      )
+      const embed = createThreadUpdatedEmbed(before, after, audit)
 
       if (embed) {
-        await service.send(after.guild, "server", embed);
+        await service.send(after.guild, 'server', embed)
       }
     }
-  };
+  }
 }
 
 function createGuildUpdateEvent(
@@ -510,14 +506,14 @@ function createGuildUpdateEvent(
         after,
         AuditLogEvent.GuildUpdate,
         targetHasId(after.id)
-      );
-      const embed = createGuildUpdatedEmbed(before, after, audit);
+      )
+      const embed = createGuildUpdatedEmbed(before, after, audit)
 
       if (embed) {
-        await service.send(after, "server", embed);
+        await service.send(after, 'server', embed)
       }
     }
-  };
+  }
 }
 
 function createEmojiCreateEvent(
@@ -530,14 +526,14 @@ function createEmojiCreateEvent(
         emoji.guild,
         AuditLogEvent.EmojiCreate,
         targetHasId(emoji.id)
-      );
+      )
       await service.send(
         emoji.guild,
-        "server",
-        createEmojiEmbed("絵文字作成", emoji, undefined, audit)
-      );
+        'server',
+        createEmojiEmbed('絵文字作成', emoji, undefined, audit)
+      )
     }
-  };
+  }
 }
 
 function createEmojiDeleteEvent(
@@ -550,14 +546,14 @@ function createEmojiDeleteEvent(
         emoji.guild,
         AuditLogEvent.EmojiDelete,
         targetHasId(emoji.id)
-      );
+      )
       await service.send(
         emoji.guild,
-        "server",
-        createEmojiEmbed("絵文字削除", emoji, undefined, audit)
-      );
+        'server',
+        createEmojiEmbed('絵文字削除', emoji, undefined, audit)
+      )
     }
-  };
+  }
 }
 
 function createEmojiUpdateEvent(
@@ -567,28 +563,28 @@ function createEmojiUpdateEvent(
     name: Events.GuildEmojiUpdate,
     execute: async (before, after) => {
       const details =
-        before.name !== after.name ? `**名前:** ${before.name} -> ${after.name}` : undefined;
+        before.name !== after.name ? `**名前:** ${before.name} -> ${after.name}` : undefined
 
       if (!details) {
-        return;
+        return
       }
 
       const audit = await findRecentAuditLogEntry(
         after.guild,
         AuditLogEvent.EmojiUpdate,
         targetHasId(after.id)
-      );
+      )
       await service.send(
         after.guild,
-        "server",
-        createEmojiEmbed("絵文字更新", after, details, audit)
-      );
+        'server',
+        createEmojiEmbed('絵文字更新', after, details, audit)
+      )
     }
-  };
+  }
 }
 
 function isGuildBasedChannel(channel: unknown): channel is GuildBasedChannel {
-  return typeof channel === "object" && channel !== null && "guild" in channel;
+  return typeof channel === 'object' && channel !== null && 'guild' in channel
 }
 
 async function findRecentAuditLogEntry(
@@ -596,45 +592,45 @@ async function findRecentAuditLogEntry(
   action: AuditLogEvent,
   matcher: TargetMatcher
 ): Promise<EventLogAuditDetails | undefined> {
-  const auditLogs = await guild.fetchAuditLogs({ limit: 8, type: action }).catch(() => undefined);
+  const auditLogs = await guild.fetchAuditLogs({ limit: 8, type: action }).catch(() => undefined)
 
   if (!auditLogs) {
-    return undefined;
+    return undefined
   }
 
-  const now = Date.now();
+  const now = Date.now()
   const entry = auditLogs.entries.find(
     (candidate) => matcher(candidate.target) && now - candidate.createdTimestamp < 10_000
-  );
+  )
 
   if (!entry) {
-    return undefined;
+    return undefined
   }
 
   return {
     actorId: entry.executor?.id,
     reason: entry.reason
-  };
+  }
 }
 
 function targetHasId(targetId: string): TargetMatcher {
   return (target) => {
-    if (typeof target !== "object" || target === null || !("id" in target)) {
-      return false;
+    if (typeof target !== 'object' || target === null || !('id' in target)) {
+      return false
     }
 
-    const { id } = target as { id?: unknown };
-    return id === targetId;
-  };
+    const { id } = target as { id?: unknown }
+    return id === targetId
+  }
 }
 
 function targetHasCode(code: string): TargetMatcher {
   return (target) => {
-    if (typeof target !== "object" || target === null || !("code" in target)) {
-      return false;
+    if (typeof target !== 'object' || target === null || !('code' in target)) {
+      return false
     }
 
-    const { code: targetCode } = target as { code?: unknown };
-    return targetCode === code;
-  };
+    const { code: targetCode } = target as { code?: unknown }
+    return targetCode === code
+  }
 }

@@ -1,6 +1,6 @@
-import { Events } from "discord.js";
-import type { DiscordEventHandler } from "../../../platform/discord/botModule";
-import type { BotActivityService } from "../services/botActivityService";
+import { Events } from 'discord.js'
+import type { DiscordEventHandler } from '../../../platform/discord/botModule'
+import type { BotActivityService } from '../services/botActivityService'
 
 export function createClientReadyEvent(
   service: BotActivityService
@@ -9,7 +9,7 @@ export function createClientReadyEvent(
     name: Events.ClientReady,
     once: true,
     execute: async (client) => {
-      await service.applyToClient(client);
+      await service.applyToClient(client)
     }
-  };
+  }
 }

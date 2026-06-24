@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits } from "discord.js";
+import { Client, GatewayIntentBits } from 'discord.js'
 
 export function createDiscordClient(): Client {
   return new Client({
@@ -12,5 +12,5 @@ export function createDiscordClient(): Client {
       GatewayIntentBits.GuildVoiceStates,
       GatewayIntentBits.MessageContent
     ]
-  });
+  })
 }

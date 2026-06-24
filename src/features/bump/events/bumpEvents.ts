@@ -1,9 +1,9 @@
-import { Events } from "discord.js";
+import { Events } from 'discord.js'
 import type {
   AnyDiscordEventHandler,
   DiscordEventHandler
-} from "../../../platform/discord/botModule";
-import type { BumpService } from "../services/bumpService";
+} from '../../../platform/discord/botModule'
+import type { BumpService } from '../services/bumpService'
 
 export function createBumpEvents(service: BumpService): AnyDiscordEventHandler[] {
   return [
@@ -12,7 +12,7 @@ export function createBumpEvents(service: BumpService): AnyDiscordEventHandler[]
     createMessageUpdateEvent(service),
     createChannelDeleteEvent(service),
     createGuildDeleteEvent(service)
-  ];
+  ]
 }
 
 function createClientReadyEvent(
@@ -22,10 +22,10 @@ function createClientReadyEvent(
     name: Events.ClientReady,
     once: true,
     execute: async (client) => {
-      await service.loadConfiguredGuilds();
-      service.startReminderLoop(client);
+      await service.loadConfiguredGuilds()
+      service.startReminderLoop(client)
     }
-  };
+  }
 }
 
 function createMessageCreateEvent(
@@ -34,9 +34,9 @@ function createMessageCreateEvent(
   return {
     name: Events.MessageCreate,
     execute: async (message) => {
-      await service.handleMessage(message);
+      await service.handleMessage(message)
     }
-  };
+  }
 }
 
 function createMessageUpdateEvent(
@@ -46,10 +46,10 @@ function createMessageUpdateEvent(
     name: Events.MessageUpdate,
     execute: async (before, after) => {
       if (before.embeds.length === 0 && after.embeds.length > 0 && !after.partial) {
-        await service.handleMessage(after);
+        await service.handleMessage(after)
       }
     }
-  };
+  }
 }
 
 function createChannelDeleteEvent(
@@ -58,13 +58,13 @@ function createChannelDeleteEvent(
   return {
     name: Events.ChannelDelete,
     execute: async (channel) => {
-      const guildId = "guild" in channel ? channel.guild.id : undefined;
+      const guildId = 'guild' in channel ? channel.guild.id : undefined
 
       if (guildId) {
-        await service.deleteChannel(guildId, channel.id);
+        await service.deleteChannel(guildId, channel.id)
       }
     }
-  };
+  }
 }
 
 function createGuildDeleteEvent(
@@ -73,7 +73,7 @@ function createGuildDeleteEvent(
   return {
     name: Events.GuildDelete,
     execute: async (guild) => {
-      await service.deleteByGuild(guild.id);
+      await service.deleteByGuild(guild.id)
     }
-  };
+  }
 }

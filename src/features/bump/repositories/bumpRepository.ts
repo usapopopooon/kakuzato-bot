@@ -1,45 +1,45 @@
-import type { AppPrismaClient } from "../../../platform/database/prisma";
-import type { BumpServiceKey } from "../bumpServices";
+import type { AppPrismaClient } from '../../../platform/database/prisma'
+import type { BumpServiceKey } from '../bumpServices'
 
 export type BumpConfig = {
-  guildId: string;
-  channelId: string;
-  createdAt: string;
-  updatedAt: string;
-};
+  guildId: string
+  channelId: string
+  createdAt: string
+  updatedAt: string
+}
 
 export type BumpReminder = {
-  id: number;
-  guildId: string;
-  channelId: string;
-  serviceKey: BumpServiceKey;
-  remindAt?: string;
-  isEnabled: boolean;
-  roleId?: string;
-  createdAt: string;
-  updatedAt: string;
-};
+  id: number
+  guildId: string
+  channelId: string
+  serviceKey: BumpServiceKey
+  remindAt?: string
+  isEnabled: boolean
+  roleId?: string
+  createdAt: string
+  updatedAt: string
+}
 
-type BumpPrisma = Pick<AppPrismaClient, "bumpConfig" | "bumpReminder">;
+type BumpPrisma = Pick<AppPrismaClient, 'bumpConfig' | 'bumpReminder'>
 
 export class BumpRepository {
-  private readonly prisma: BumpPrisma;
+  private readonly prisma: BumpPrisma
 
   constructor(prisma: BumpPrisma) {
-    this.prisma = prisma;
+    this.prisma = prisma
   }
 
   async getConfig(guildId: string): Promise<BumpConfig | undefined> {
     const config = await this.prisma.bumpConfig.findUnique({
       where: { guildId }
-    });
+    })
 
-    return config ? toBumpConfig(config) : undefined;
+    return config ? toBumpConfig(config) : undefined
   }
 
   async listConfigs(): Promise<BumpConfig[]> {
-    const configs = await this.prisma.bumpConfig.findMany();
-    return configs.map(toBumpConfig);
+    const configs = await this.prisma.bumpConfig.findMany()
+    return configs.map(toBumpConfig)
   }
 
   async setConfig(guildId: string, channelId: string): Promise<BumpConfig> {
@@ -47,39 +47,39 @@ export class BumpRepository {
       where: { guildId },
       create: { guildId, channelId },
       update: { channelId }
-    });
+    })
 
-    return toBumpConfig(config);
+    return toBumpConfig(config)
   }
 
   async deleteConfig(guildId: string): Promise<boolean> {
     const result = await this.prisma.bumpConfig.deleteMany({
       where: { guildId }
-    });
+    })
 
-    return result.count > 0;
+    return result.count > 0
   }
 
   async deleteByGuild(guildId: string): Promise<number> {
     const reminderResult = await this.prisma.bumpReminder.deleteMany({
       where: { guildId }
-    });
+    })
     await this.prisma.bumpConfig.deleteMany({
       where: { guildId }
-    });
+    })
 
-    return reminderResult.count;
+    return reminderResult.count
   }
 
   async deleteByChannel(guildId: string, channelId: string): Promise<boolean> {
-    const config = await this.getConfig(guildId);
+    const config = await this.getConfig(guildId)
 
     if (config?.channelId !== channelId) {
-      return false;
+      return false
     }
 
-    await this.deleteByGuild(guildId);
-    return true;
+    await this.deleteByGuild(guildId)
+    return true
   }
 
   async getReminder(
@@ -93,17 +93,17 @@ export class BumpRepository {
           serviceKey
         }
       }
-    });
+    })
 
-    return reminder ? toBumpReminder(reminder) : undefined;
+    return reminder ? toBumpReminder(reminder) : undefined
   }
 
   async listRemindersByGuild(guildId: string): Promise<BumpReminder[]> {
     const reminders = await this.prisma.bumpReminder.findMany({
       where: { guildId }
-    });
+    })
 
-    return reminders.map(toBumpReminder);
+    return reminders.map(toBumpReminder)
   }
 
   async upsertReminder(
@@ -129,9 +129,9 @@ export class BumpRepository {
         channelId,
         remindAt
       }
-    });
+    })
 
-    return toBumpReminder(reminder);
+    return toBumpReminder(reminder)
   }
 
   async claimBumpDetection(
@@ -140,7 +140,7 @@ export class BumpRepository {
     serviceKey: BumpServiceKey,
     remindAt: Date
   ): Promise<BumpReminder | undefined> {
-    const duplicateThreshold = new Date(remindAt.getTime() - 60_000);
+    const duplicateThreshold = new Date(remindAt.getTime() - 60_000)
     const result = await this.prisma.bumpReminder.updateMany({
       where: {
         guildId,
@@ -151,16 +151,16 @@ export class BumpRepository {
         channelId,
         remindAt
       }
-    });
+    })
 
     if (result.count > 0) {
-      return this.getReminder(guildId, serviceKey);
+      return this.getReminder(guildId, serviceKey)
     }
 
-    const existing = await this.getReminder(guildId, serviceKey);
+    const existing = await this.getReminder(guildId, serviceKey)
 
     if (existing) {
-      return undefined;
+      return undefined
     }
 
     try {
@@ -171,14 +171,14 @@ export class BumpRepository {
           serviceKey,
           remindAt
         }
-      });
-      return toBumpReminder(reminder);
+      })
+      return toBumpReminder(reminder)
     } catch (error) {
       if (isUniqueConstraintError(error)) {
-        return undefined;
+        return undefined
       }
 
-      throw error;
+      throw error
     }
   }
 
@@ -190,10 +190,10 @@ export class BumpRepository {
           lte: now
         }
       },
-      orderBy: { remindAt: "asc" }
-    });
+      orderBy: { remindAt: 'asc' }
+    })
 
-    return reminders.map(toBumpReminder);
+    return reminders.map(toBumpReminder)
   }
 
   async claimDueReminder(id: number, now: Date, retryAt: Date): Promise<boolean> {
@@ -208,9 +208,9 @@ export class BumpRepository {
       data: {
         remindAt: retryAt
       }
-    });
+    })
 
-    return result.count > 0;
+    return result.count > 0
   }
 
   async clearReminder(id: number, expectedRemindAt?: Date): Promise<boolean> {
@@ -222,13 +222,13 @@ export class BumpRepository {
       data: {
         remindAt: null
       }
-    });
+    })
 
-    return result.count > 0;
+    return result.count > 0
   }
 
   async toggleReminder(guildId: string, serviceKey: BumpServiceKey): Promise<BumpReminder> {
-    const current = await this.getReminder(guildId, serviceKey);
+    const current = await this.getReminder(guildId, serviceKey)
 
     if (!current) {
       const reminder = await this.prisma.bumpReminder.create({
@@ -237,8 +237,8 @@ export class BumpRepository {
           serviceKey,
           isEnabled: false
         }
-      });
-      return toBumpReminder(reminder);
+      })
+      return toBumpReminder(reminder)
     }
 
     const reminder = await this.prisma.bumpReminder.update({
@@ -251,9 +251,9 @@ export class BumpRepository {
       data: {
         isEnabled: !current.isEnabled
       }
-    });
+    })
 
-    return toBumpReminder(reminder);
+    return toBumpReminder(reminder)
   }
 
   async setReminderRole(
@@ -276,55 +276,55 @@ export class BumpRepository {
       update: {
         roleId: roleId ?? null
       }
-    });
+    })
 
-    return toBumpReminder(reminder);
+    return toBumpReminder(reminder)
   }
 }
 
 function toBumpConfig(config: {
-  guildId: string;
-  channelId: string;
-  createdAt: Date;
-  updatedAt: Date;
+  guildId: string
+  channelId: string
+  createdAt: Date
+  updatedAt: Date
 }): BumpConfig {
   return {
     guildId: config.guildId,
     channelId: config.channelId,
     createdAt: config.createdAt.toISOString(),
     updatedAt: config.updatedAt.toISOString()
-  };
+  }
 }
 
 function toBumpReminder(reminder: {
-  id: number;
-  guildId: string;
-  channelId: string;
-  serviceKey: string;
-  remindAt: Date | null;
-  isEnabled: boolean;
-  roleId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
+  id: number
+  guildId: string
+  channelId: string
+  serviceKey: string
+  remindAt: Date | null
+  isEnabled: boolean
+  roleId: string | null
+  createdAt: Date
+  updatedAt: Date
 }): BumpReminder {
   return {
     id: reminder.id,
     guildId: reminder.guildId,
     channelId: reminder.channelId,
-    serviceKey: reminder.serviceKey === "DISBOARD" ? "DISBOARD" : "DISSOKU",
+    serviceKey: reminder.serviceKey === 'DISBOARD' ? 'DISBOARD' : 'DISSOKU',
     remindAt: reminder.remindAt?.toISOString(),
     isEnabled: reminder.isEnabled,
     roleId: reminder.roleId ?? undefined,
     createdAt: reminder.createdAt.toISOString(),
     updatedAt: reminder.updatedAt.toISOString()
-  };
+  }
 }
 
 function isUniqueConstraintError(error: unknown): boolean {
   return (
-    typeof error === "object" &&
+    typeof error === 'object' &&
     error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "P2002"
-  );
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2002'
+  )
 }

@@ -1,16 +1,16 @@
-import { describe, expect, it, vi } from "vitest";
-import { defaultWelcomeMessageContent, WelcomeConfigRepository } from "./welcomeConfigRepository";
+import { describe, expect, it, vi } from 'vitest'
+import { defaultWelcomeMessageContent, WelcomeConfigRepository } from './welcomeConfigRepository'
 
 type WelcomeRow = {
-  guildId: string;
-  channelId: string;
-  enabled: boolean;
-  messageContent: string;
-  updatedAt: Date;
-};
+  guildId: string
+  channelId: string
+  enabled: boolean
+  messageContent: string
+  updatedAt: Date
+}
 
 function createRepository() {
-  const rows = new Map<string, WelcomeRow>();
+  const rows = new Map<string, WelcomeRow>()
   const welcomeConfig = {
     findUnique: vi.fn(
       ({ where }: { where: { guildId: string } }) => rows.get(where.guildId) ?? null
@@ -21,18 +21,18 @@ function createRepository() {
         create,
         update
       }: {
-        where: { guildId: string };
-        create: Omit<WelcomeRow, "updatedAt">;
-        update: Partial<Omit<WelcomeRow, "guildId" | "updatedAt">>;
+        where: { guildId: string }
+        create: Omit<WelcomeRow, 'updatedAt'>
+        update: Partial<Omit<WelcomeRow, 'guildId' | 'updatedAt'>>
       }) => {
-        const current = rows.get(where.guildId);
+        const current = rows.get(where.guildId)
         const row = {
           ...(current ?? create),
           ...update,
           updatedAt: new Date()
-        };
-        rows.set(where.guildId, row);
-        return row;
+        }
+        rows.set(where.guildId, row)
+        return row
       }
     ),
     update: vi.fn(
@@ -40,81 +40,81 @@ function createRepository() {
         where,
         data
       }: {
-        where: { guildId: string };
-        data: Partial<Omit<WelcomeRow, "guildId" | "updatedAt">>;
+        where: { guildId: string }
+        data: Partial<Omit<WelcomeRow, 'guildId' | 'updatedAt'>>
       }) => {
-        const current = rows.get(where.guildId);
+        const current = rows.get(where.guildId)
 
         if (!current) {
-          return Promise.reject(createPrismaError("P2025"));
+          return Promise.reject(createPrismaError('P2025'))
         }
 
-        const row = { ...current, ...data, updatedAt: new Date() };
-        rows.set(where.guildId, row);
-        return Promise.resolve(row);
+        const row = { ...current, ...data, updatedAt: new Date() }
+        rows.set(where.guildId, row)
+        return Promise.resolve(row)
       }
     )
-  };
+  }
 
   return {
     repository: new WelcomeConfigRepository({ welcomeConfig } as never),
     rows
-  };
+  }
 }
 
-describe("WelcomeConfigRepository", () => {
-  it("stores an enabled channel config per guild", async () => {
-    const { repository } = createRepository();
+describe('WelcomeConfigRepository', () => {
+  it('stores an enabled channel config per guild', async () => {
+    const { repository } = createRepository()
 
-    const config = await repository.setChannel("guild-1", "channel-1");
+    const config = await repository.setChannel('guild-1', 'channel-1')
 
     expect(config).toMatchObject({
-      guildId: "guild-1",
-      channelId: "channel-1",
+      guildId: 'guild-1',
+      channelId: 'channel-1',
       enabled: true,
       messageContent: defaultWelcomeMessageContent
-    });
-    await expect(repository.get("guild-1")).resolves.toMatchObject({
-      channelId: "channel-1",
+    })
+    await expect(repository.get('guild-1')).resolves.toMatchObject({
+      channelId: 'channel-1',
       enabled: true,
       messageContent: defaultWelcomeMessageContent
-    });
-  });
+    })
+  })
 
-  it("updates the message while preserving the channel config", async () => {
-    const { repository } = createRepository();
-    await repository.setChannel("guild-1", "channel-1");
+  it('updates the message while preserving the channel config', async () => {
+    const { repository } = createRepository()
+    await repository.setChannel('guild-1', 'channel-1')
 
-    await expect(repository.setMessage("guild-1", "ようこそ、{mention}!")).resolves.toMatchObject({
-      channelId: "channel-1",
+    await expect(repository.setMessage('guild-1', 'ようこそ、{mention}!')).resolves.toMatchObject({
+      channelId: 'channel-1',
       enabled: true,
-      messageContent: "ようこそ、{mention}!"
-    });
-  });
+      messageContent: 'ようこそ、{mention}!'
+    })
+  })
 
-  it("returns undefined when updating a missing config", async () => {
-    const { repository } = createRepository();
+  it('returns undefined when updating a missing config', async () => {
+    const { repository } = createRepository()
 
-    await expect(repository.setMessage("guild-1", "hello")).resolves.toBeUndefined();
-  });
+    await expect(repository.setMessage('guild-1', 'hello')).resolves.toBeUndefined()
+  })
 
-  it("disables an existing config without removing the channel", async () => {
-    const { repository } = createRepository();
-    await repository.setChannel("guild-1", "channel-1");
+  it('disables an existing config without removing the channel', async () => {
+    const { repository } = createRepository()
+    await repository.setChannel('guild-1', 'channel-1')
 
-    await expect(repository.disable("guild-1")).resolves.toMatchObject({
-      channelId: "channel-1",
+    await expect(repository.disable('guild-1')).resolves.toMatchObject({
+      channelId: 'channel-1',
       enabled: false
-    });
-    await expect(repository.get("guild-1")).resolves.toMatchObject({
-      channelId: "channel-1",
+    })
+    await expect(repository.get('guild-1')).resolves.toMatchObject({
+      channelId: 'channel-1',
       enabled: false
-    });
-  });
-});
+    })
+  })
+})
 
 function createPrismaError(code: string): Error & { code: string } {
-  const error = new Error(code) as Error & { code: string };
-  error.code = code;
-  return error;
+  const error = new Error(code) as Error & { code: string }
+  error.code = code
+  return error
 }

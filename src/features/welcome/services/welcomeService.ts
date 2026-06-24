@@ -1,70 +1,70 @@
-import { AttachmentBuilder, type Guild, type GuildMember } from "discord.js";
-import type { AppLogger } from "../../../platform/logger/logger";
+import { AttachmentBuilder, type Guild, type GuildMember } from 'discord.js'
+import type { AppLogger } from '../../../platform/logger/logger'
 import type {
   WelcomeConfig,
   WelcomeConfigRepository
-} from "../repositories/welcomeConfigRepository";
-import { renderWelcomeMessage } from "./welcomeMessage";
-import type { JoinBannerService } from "./joinBannerService";
+} from '../repositories/welcomeConfigRepository'
+import { renderWelcomeMessage } from './welcomeMessage'
+import type { JoinBannerService } from './joinBannerService'
 
 export type WelcomeSendableChannel = {
-  id: string;
+  id: string
   send(options: {
-    content: string;
-    files: AttachmentBuilder[];
-    allowedMentions: { users: string[] };
-  }): Promise<unknown>;
-};
+    content: string
+    files: AttachmentBuilder[]
+    allowedMentions: { users: string[] }
+  }): Promise<unknown>
+}
 
-export const discordMessageMaxLength = 2_000;
-const truncationSuffix = "...";
+export const discordMessageMaxLength = 2_000
+const truncationSuffix = '...'
 
 export class WelcomeService {
-  private readonly repository: WelcomeConfigRepository;
-  private readonly bannerService: JoinBannerService;
-  private readonly logger: AppLogger;
+  private readonly repository: WelcomeConfigRepository
+  private readonly bannerService: JoinBannerService
+  private readonly logger: AppLogger
 
   constructor(
     repository: WelcomeConfigRepository,
     bannerService: JoinBannerService,
     logger: AppLogger
   ) {
-    this.repository = repository;
-    this.bannerService = bannerService;
-    this.logger = logger;
+    this.repository = repository
+    this.bannerService = bannerService
+    this.logger = logger
   }
 
   async getConfig(guildId: string): Promise<WelcomeConfig | undefined> {
-    return this.repository.get(guildId);
+    return this.repository.get(guildId)
   }
 
   async setChannel(guildId: string, channelId: string): Promise<WelcomeConfig> {
-    return this.repository.setChannel(guildId, channelId);
+    return this.repository.setChannel(guildId, channelId)
   }
 
   async setMessage(guildId: string, messageContent: string): Promise<WelcomeConfig | undefined> {
-    return this.repository.setMessage(guildId, messageContent);
+    return this.repository.setMessage(guildId, messageContent)
   }
 
   async disable(guildId: string): Promise<WelcomeConfig | undefined> {
-    return this.repository.disable(guildId);
+    return this.repository.disable(guildId)
   }
 
   async send(member: GuildMember): Promise<boolean> {
-    const config = await this.repository.get(member.guild.id);
+    const config = await this.repository.get(member.guild.id)
 
     if (!config?.enabled) {
-      return false;
+      return false
     }
 
-    const channel = await this.fetchSendableChannel(member.guild, config.channelId);
+    const channel = await this.fetchSendableChannel(member.guild, config.channelId)
 
     if (!channel) {
       this.logger.warn(
         { guildId: member.guild.id, channelId: config.channelId },
-        "Welcome channel is not sendable"
-      );
-      return false;
+        'Welcome channel is not sendable'
+      )
+      return false
     }
 
     try {
@@ -73,11 +73,11 @@ export class WelcomeService {
         username: member.user.username,
         guildName: member.guild.name,
         memberCount: member.guild.memberCount,
-        avatarUrl: member.displayAvatarURL({ extension: "png", size: 512 })
-      });
+        avatarUrl: member.displayAvatarURL({ extension: 'png', size: 512 })
+      })
       const attachment = new AttachmentBuilder(image, {
         name: `welcome-${member.id}.png`
-      });
+      })
       const content = limitWelcomeMessageContent(
         renderWelcomeMessage(config.messageContent, {
           userId: member.id,
@@ -86,21 +86,21 @@ export class WelcomeService {
           guildName: member.guild.name,
           memberCount: member.guild.memberCount
         })
-      );
+      )
 
       await channel.send({
         content,
         files: [attachment],
         allowedMentions: { users: [member.id] }
-      });
-      this.logger.info({ guildId: member.guild.id, userId: member.id }, "Sent welcome banner");
-      return true;
+      })
+      this.logger.info({ guildId: member.guild.id, userId: member.id }, 'Sent welcome banner')
+      return true
     } catch (error) {
       this.logger.warn(
         { error, guildId: member.guild.id, channelId: channel.id, userId: member.id },
-        "Failed to send welcome banner"
-      );
-      return false;
+        'Failed to send welcome banner'
+      )
+      return false
     }
   }
 
@@ -108,48 +108,48 @@ export class WelcomeService {
     guild: Guild,
     channelId: string
   ): Promise<WelcomeSendableChannel | undefined> {
-    const cached = guild.channels.cache.get(channelId);
+    const cached = guild.channels.cache.get(channelId)
 
     if (isWelcomeSendableChannel(cached)) {
-      return cached;
+      return cached
     }
 
-    const fetched = await guild.channels.fetch(channelId).catch(() => null);
+    const fetched = await guild.channels.fetch(channelId).catch(() => null)
 
     if (isWelcomeSendableChannel(fetched)) {
-      return fetched;
+      return fetched
     }
 
-    return undefined;
+    return undefined
   }
 }
 
 export function isWelcomeSendableChannel(channel: unknown): channel is WelcomeSendableChannel {
   return (
-    typeof channel === "object" &&
+    typeof channel === 'object' &&
     channel !== null &&
-    "id" in channel &&
-    typeof (channel as { id?: unknown }).id === "string" &&
-    "send" in channel &&
-    typeof (channel as { send?: unknown }).send === "function"
-  );
+    'id' in channel &&
+    typeof (channel as { id?: unknown }).id === 'string' &&
+    'send' in channel &&
+    typeof (channel as { send?: unknown }).send === 'function'
+  )
 }
 
 export function limitWelcomeMessageContent(content: string): string {
   if (content.length <= discordMessageMaxLength) {
-    return content;
+    return content
   }
 
-  const maxBodyLength = discordMessageMaxLength - truncationSuffix.length;
-  let body = "";
+  const maxBodyLength = discordMessageMaxLength - truncationSuffix.length
+  let body = ''
 
   for (const character of content) {
     if (body.length + character.length > maxBodyLength) {
-      break;
+      break
     }
 
-    body += character;
+    body += character
   }
 
-  return `${body}${truncationSuffix}`;
+  return `${body}${truncationSuffix}`
 }

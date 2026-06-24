@@ -1,10 +1,10 @@
-import { Events, type GuildMember } from "discord.js";
-import type { DiscordEventHandler } from "../../../platform/discord/botModule";
-import type { WelcomeService } from "../services/welcomeService";
+import { Events, type GuildMember } from 'discord.js'
+import type { DiscordEventHandler } from '../../../platform/discord/botModule'
+import type { WelcomeService } from '../services/welcomeService'
 
 type GuildMemberAddDeps = {
-  welcomeService: WelcomeService;
-};
+  welcomeService: WelcomeService
+}
 
 export function createGuildMemberAddEvent(
   deps: GuildMemberAddDeps
@@ -12,12 +12,12 @@ export function createGuildMemberAddEvent(
   return {
     name: Events.GuildMemberAdd,
     execute: (member) => handleGuildMemberAdd(member, deps)
-  };
+  }
 }
 
 export async function handleGuildMemberAdd(
   member: GuildMember,
   deps: GuildMemberAddDeps
 ): Promise<void> {
-  await deps.welcomeService.send(member);
+  await deps.welcomeService.send(member)
 }

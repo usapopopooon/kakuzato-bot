@@ -1,35 +1,35 @@
-import type { AppPrismaClient } from "../../../platform/database/prisma";
+import type { AppPrismaClient } from '../../../platform/database/prisma'
 
-export const defaultWelcomeMessageContent = "Welcome, {mention}!";
+export const defaultWelcomeMessageContent = 'Welcome, {mention}!'
 
 export type WelcomeConfig = {
-  guildId: string;
-  channelId: string;
-  enabled: boolean;
-  messageContent: string;
-  updatedAt: string;
-};
+  guildId: string
+  channelId: string
+  enabled: boolean
+  messageContent: string
+  updatedAt: string
+}
 
 export class WelcomeConfigRepository {
-  private readonly prisma: Pick<AppPrismaClient, "welcomeConfig">;
+  private readonly prisma: Pick<AppPrismaClient, 'welcomeConfig'>
 
-  constructor(prisma: Pick<AppPrismaClient, "welcomeConfig">) {
-    this.prisma = prisma;
+  constructor(prisma: Pick<AppPrismaClient, 'welcomeConfig'>) {
+    this.prisma = prisma
   }
 
   async get(guildId: string): Promise<WelcomeConfig | undefined> {
     const config = await this.prisma.welcomeConfig.findUnique({
       where: { guildId }
-    });
+    })
 
-    return config ? toWelcomeConfig(config) : undefined;
+    return config ? toWelcomeConfig(config) : undefined
   }
 
   async setChannel(guildId: string, channelId: string): Promise<WelcomeConfig> {
     const current = await this.prisma.welcomeConfig.findUnique({
       where: { guildId },
       select: { messageContent: true }
-    });
+    })
     const config = await this.prisma.welcomeConfig.upsert({
       where: { guildId },
       create: {
@@ -42,9 +42,9 @@ export class WelcomeConfigRepository {
         channelId,
         enabled: true
       }
-    });
+    })
 
-    return toWelcomeConfig(config);
+    return toWelcomeConfig(config)
   }
 
   async setMessage(guildId: string, messageContent: string): Promise<WelcomeConfig | undefined> {
@@ -55,13 +55,13 @@ export class WelcomeConfigRepository {
       })
       .catch((error: unknown) => {
         if (isRecordNotFoundError(error)) {
-          return undefined;
+          return undefined
         }
 
-        throw error;
-      });
+        throw error
+      })
 
-    return config ? toWelcomeConfig(config) : undefined;
+    return config ? toWelcomeConfig(config) : undefined
   }
 
   async disable(guildId: string): Promise<WelcomeConfig | undefined> {
@@ -72,22 +72,22 @@ export class WelcomeConfigRepository {
       })
       .catch((error: unknown) => {
         if (isRecordNotFoundError(error)) {
-          return undefined;
+          return undefined
         }
 
-        throw error;
-      });
+        throw error
+      })
 
-    return config ? toWelcomeConfig(config) : undefined;
+    return config ? toWelcomeConfig(config) : undefined
   }
 }
 
 function toWelcomeConfig(config: {
-  guildId: string;
-  channelId: string;
-  enabled: boolean;
-  messageContent: string;
-  updatedAt: Date;
+  guildId: string
+  channelId: string
+  enabled: boolean
+  messageContent: string
+  updatedAt: Date
 }): WelcomeConfig {
   return {
     guildId: config.guildId,
@@ -95,14 +95,14 @@ function toWelcomeConfig(config: {
     enabled: config.enabled,
     messageContent: config.messageContent,
     updatedAt: config.updatedAt.toISOString()
-  };
+  }
 }
 
 function isRecordNotFoundError(error: unknown): boolean {
   return (
-    typeof error === "object" &&
+    typeof error === 'object' &&
     error !== null &&
-    "code" in error &&
-    (error as { code?: unknown }).code === "P2025"
-  );
+    'code' in error &&
+    (error as { code?: unknown }).code === 'P2025'
+  )
 }

@@ -5,42 +5,42 @@ import type {
   MessageComponentInteraction,
   ModalSubmitInteraction,
   RESTPostAPIChatInputApplicationCommandsJSONBody
-} from "discord.js";
+} from 'discord.js'
 
 export type DiscordEventHandler<EventName extends keyof ClientEvents> = {
-  name: EventName;
-  once?: boolean;
-  execute: (...args: ClientEvents[EventName]) => Awaitable<void>;
-};
+  name: EventName
+  once?: boolean
+  execute: (...args: ClientEvents[EventName]) => Awaitable<void>
+}
 
 export type AnyDiscordEventHandler = {
-  name: keyof ClientEvents;
-  once?: boolean;
-  execute: (...args: never[]) => Awaitable<void>;
-};
+  name: keyof ClientEvents
+  once?: boolean
+  execute: (...args: never[]) => Awaitable<void>
+}
 
 export type DiscordCommand = {
   data: {
-    name: string;
-    toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody;
-  };
-  execute(interaction: ChatInputCommandInteraction): Awaitable<void>;
-};
+    name: string
+    toJSON(): RESTPostAPIChatInputApplicationCommandsJSONBody
+  }
+  execute(interaction: ChatInputCommandInteraction): Awaitable<void>
+}
 
 export type DiscordModalSubmitHandler = {
-  customIdPrefix: string;
-  execute(interaction: ModalSubmitInteraction): Awaitable<void>;
-};
+  customIdPrefix: string
+  execute(interaction: ModalSubmitInteraction): Awaitable<void>
+}
 
 export type DiscordComponentHandler = {
-  customIdPrefix: string;
-  execute(interaction: MessageComponentInteraction): Awaitable<void>;
-};
+  customIdPrefix: string
+  execute(interaction: MessageComponentInteraction): Awaitable<void>
+}
 
 export type BotModule = {
-  name: string;
-  events?: AnyDiscordEventHandler[];
-  commands?: DiscordCommand[];
-  componentHandlers?: DiscordComponentHandler[];
-  modalSubmitHandlers?: DiscordModalSubmitHandler[];
-};
+  name: string
+  events?: AnyDiscordEventHandler[]
+  commands?: DiscordCommand[]
+  componentHandlers?: DiscordComponentHandler[]
+  modalSubmitHandlers?: DiscordModalSubmitHandler[]
+}

@@ -1,40 +1,40 @@
-import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from "discord.js";
-import { describe, expect, it, vi } from "vitest";
-import type { WelcomeService } from "../services/welcomeService";
-import { createWelcomeCommand } from "./welcomeCommand";
+import { MessageFlags, PermissionFlagsBits, type ChatInputCommandInteraction } from 'discord.js'
+import { describe, expect, it, vi } from 'vitest'
+import type { WelcomeService } from '../services/welcomeService'
+import { createWelcomeCommand } from './welcomeCommand'
 
-describe("welcome command", () => {
-  it("rejects non-admin users before changing config", async () => {
+describe('welcome command', () => {
+  it('rejects non-admin users before changing config', async () => {
     const service = {
       setChannel: vi.fn()
-    };
-    const reply = vi.fn();
-    const command = createWelcomeCommand(service as unknown as WelcomeService);
+    }
+    const reply = vi.fn()
+    const command = createWelcomeCommand(service as unknown as WelcomeService)
 
     await command.execute({
       inCachedGuild: () => true,
       memberPermissions: { has: () => false },
       reply
-    } as unknown as ChatInputCommandInteraction);
+    } as unknown as ChatInputCommandInteraction)
 
-    expect(service.setChannel).not.toHaveBeenCalled();
+    expect(service.setChannel).not.toHaveBeenCalled()
     expect(reply).toHaveBeenCalledWith({
-      content: "このコマンドは管理者のみ実行できます。",
+      content: 'このコマンドは管理者のみ実行できます。',
       flags: MessageFlags.Ephemeral
-    });
-  });
+    })
+  })
 
-  it("stores the selected sendable channel from the set subcommand", async () => {
+  it('stores the selected sendable channel from the set subcommand', async () => {
     const service = {
       setChannel: vi.fn().mockResolvedValue(undefined)
-    };
-    const fetchedChannel = { id: "channel-1", send: vi.fn() };
-    const reply = vi.fn();
-    const command = createWelcomeCommand(service as unknown as WelcomeService);
+    }
+    const fetchedChannel = { id: 'channel-1', send: vi.fn() }
+    const reply = vi.fn()
+    const command = createWelcomeCommand(service as unknown as WelcomeService)
 
     await command.execute({
       inCachedGuild: () => true,
-      guildId: "guild-1",
+      guildId: 'guild-1',
       guild: {
         channels: {
           fetch: vi.fn().mockResolvedValue(fetchedChannel)
@@ -44,126 +44,126 @@ describe("welcome command", () => {
         has: (permission: bigint) => permission === PermissionFlagsBits.Administrator
       },
       options: {
-        getSubcommand: () => "set",
-        getChannel: () => ({ id: "channel-1" })
+        getSubcommand: () => 'set',
+        getChannel: () => ({ id: 'channel-1' })
       },
       reply
-    } as unknown as ChatInputCommandInteraction);
+    } as unknown as ChatInputCommandInteraction)
 
-    expect(service.setChannel).toHaveBeenCalledWith("guild-1", "channel-1");
+    expect(service.setChannel).toHaveBeenCalledWith('guild-1', 'channel-1')
     expect(reply).toHaveBeenCalledWith({
-      content: "welcome画像の送信先を <#channel-1> に設定しました。",
+      content: 'welcome画像の送信先を <#channel-1> に設定しました。',
       flags: MessageFlags.Ephemeral
-    });
-  });
+    })
+  })
 
-  it("rejects a channel when the bot cannot send files there", async () => {
+  it('rejects a channel when the bot cannot send files there', async () => {
     const service = {
       setChannel: vi.fn()
-    };
-    const reply = vi.fn();
-    const command = createWelcomeCommand(service as unknown as WelcomeService);
+    }
+    const reply = vi.fn()
+    const command = createWelcomeCommand(service as unknown as WelcomeService)
 
     await command.execute({
       inCachedGuild: () => true,
-      guildId: "guild-1",
+      guildId: 'guild-1',
       guild: {
         channels: {
           fetch: vi.fn().mockResolvedValue({
-            id: "channel-1",
+            id: 'channel-1',
             send: vi.fn(),
             permissionsFor: vi.fn().mockReturnValue({ has: () => false })
           })
         }
       },
-      client: { user: { id: "bot-1" } },
+      client: { user: { id: 'bot-1' } },
       memberPermissions: {
         has: (permission: bigint) => permission === PermissionFlagsBits.Administrator
       },
       options: {
-        getSubcommand: () => "set",
-        getChannel: () => ({ id: "channel-1" })
+        getSubcommand: () => 'set',
+        getChannel: () => ({ id: 'channel-1' })
       },
       reply
-    } as unknown as ChatInputCommandInteraction);
+    } as unknown as ChatInputCommandInteraction)
 
-    expect(service.setChannel).not.toHaveBeenCalled();
+    expect(service.setChannel).not.toHaveBeenCalled()
     expect(reply).toHaveBeenCalledWith({
-      content: "そのチャンネルに送信する権限が Bot にありません。",
+      content: 'そのチャンネルに送信する権限が Bot にありません。',
       flags: MessageFlags.Ephemeral
-    });
-  });
+    })
+  })
 
-  it("stores message content after the channel is configured", async () => {
+  it('stores message content after the channel is configured', async () => {
     const service = {
       setMessage: vi.fn().mockResolvedValue({
-        guildId: "guild-1",
-        channelId: "channel-1",
+        guildId: 'guild-1',
+        channelId: 'channel-1',
         enabled: true,
-        messageContent: "ようこそ、{mention}!",
+        messageContent: 'ようこそ、{mention}!',
         updatedAt: new Date().toISOString()
       })
-    };
-    const reply = vi.fn();
-    const command = createWelcomeCommand(service as unknown as WelcomeService);
+    }
+    const reply = vi.fn()
+    const command = createWelcomeCommand(service as unknown as WelcomeService)
 
     await command.execute({
       inCachedGuild: () => true,
-      guildId: "guild-1",
+      guildId: 'guild-1',
       memberPermissions: {
         has: (permission: bigint) => permission === PermissionFlagsBits.Administrator
       },
       options: {
-        getSubcommand: () => "message",
-        getString: () => "ようこそ、{mention}!"
+        getSubcommand: () => 'message',
+        getString: () => 'ようこそ、{mention}!'
       },
       reply
-    } as unknown as ChatInputCommandInteraction);
+    } as unknown as ChatInputCommandInteraction)
 
-    expect(service.setMessage).toHaveBeenCalledWith("guild-1", "ようこそ、{mention}!");
+    expect(service.setMessage).toHaveBeenCalledWith('guild-1', 'ようこそ、{mention}!')
     expect(reply).toHaveBeenCalledWith({
-      content: "welcome本文を設定しました。\nようこそ、{mention}!",
+      content: 'welcome本文を設定しました。\nようこそ、{mention}!',
       flags: MessageFlags.Ephemeral
-    });
-  });
+    })
+  })
 
-  it("sends a test welcome through the configured service", async () => {
-    const member = { id: "user-1" };
+  it('sends a test welcome through the configured service', async () => {
+    const member = { id: 'user-1' }
     const service = {
       getConfig: vi.fn().mockResolvedValue({
-        guildId: "guild-1",
-        channelId: "channel-1",
+        guildId: 'guild-1',
+        channelId: 'channel-1',
         enabled: true,
-        messageContent: "Welcome, {mention}!",
+        messageContent: 'Welcome, {mention}!',
         updatedAt: new Date().toISOString()
       }),
       send: vi.fn().mockResolvedValue(true)
-    };
-    const deferReply = vi.fn().mockResolvedValue(undefined);
-    const editReply = vi.fn().mockResolvedValue(undefined);
-    const command = createWelcomeCommand(service as unknown as WelcomeService);
+    }
+    const deferReply = vi.fn().mockResolvedValue(undefined)
+    const editReply = vi.fn().mockResolvedValue(undefined)
+    const command = createWelcomeCommand(service as unknown as WelcomeService)
 
     await command.execute({
       inCachedGuild: () => true,
-      guildId: "guild-1",
+      guildId: 'guild-1',
       member,
       memberPermissions: {
         has: (permission: bigint) => permission === PermissionFlagsBits.Administrator
       },
       options: {
-        getSubcommand: () => "test"
+        getSubcommand: () => 'test'
       },
       deferReply,
       editReply
-    } as unknown as ChatInputCommandInteraction);
+    } as unknown as ChatInputCommandInteraction)
 
-    expect(deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral });
-    expect(service.send).toHaveBeenCalledWith(member);
+    expect(deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral })
+    expect(service.send).toHaveBeenCalledWith(member)
     expect(deferReply.mock.invocationCallOrder[0]).toBeLessThan(
       service.send.mock.invocationCallOrder[0] ?? Number.POSITIVE_INFINITY
-    );
+    )
     expect(editReply).toHaveBeenCalledWith({
-      content: "welcomeのテスト投稿を送信しました。"
-    });
-  });
-});
+      content: 'welcomeのテスト投稿を送信しました。'
+    })
+  })
+})

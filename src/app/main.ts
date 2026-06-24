@@ -1,7 +1,7 @@
-import { Events } from "discord.js";
-import { loadConfig } from "../platform/config/env";
-import { connectDatabase, createPrismaClient } from "../platform/database/prisma";
-import { createDiscordClient } from "../platform/discord/client";
+import { Events } from 'discord.js'
+import { loadConfig } from '../platform/config/env'
+import { connectDatabase, createPrismaClient } from '../platform/database/prisma'
+import { createDiscordClient } from '../platform/discord/client'
 import {
   collectComponentHandlers,
   collectCommands,
@@ -9,23 +9,23 @@ import {
   registerInteractionRouter,
   syncCommandsForGuild,
   syncGuildCommands
-} from "../platform/discord/registerCommands";
-import { registerBotModules } from "../platform/discord/registerBotModules";
-import { createLogger } from "../platform/logger/logger";
-import { createBotActivityModule } from "../features/bot-activity/botActivity.module";
-import { createEventLogModule } from "../features/event-log/eventLog.module";
-import { createStickyModule } from "../features/sticky/sticky.module";
-import { createWelcomeModule } from "../features/welcome/welcome.module";
-import { markHealthy } from "./health";
-import { setupShutdown } from "./shutdown";
-import { createBumpModule } from "../features/bump/bump.module";
+} from '../platform/discord/registerCommands'
+import { registerBotModules } from '../platform/discord/registerBotModules'
+import { createLogger } from '../platform/logger/logger'
+import { createBotActivityModule } from '../features/bot-activity/botActivity.module'
+import { createEventLogModule } from '../features/event-log/eventLog.module'
+import { createStickyModule } from '../features/sticky/sticky.module'
+import { createWelcomeModule } from '../features/welcome/welcome.module'
+import { markHealthy } from './health'
+import { setupShutdown } from './shutdown'
+import { createBumpModule } from '../features/bump/bump.module'
 
 async function main(): Promise<void> {
-  const config = loadConfig();
-  const logger = createLogger(config.logLevel);
-  const prisma = createPrismaClient(config.databaseUrl);
-  await connectDatabase(prisma, logger);
-  const client = createDiscordClient();
+  const config = loadConfig()
+  const logger = createLogger(config.logLevel)
+  const prisma = createPrismaClient(config.databaseUrl)
+  await connectDatabase(prisma, logger)
+  const client = createDiscordClient()
 
   const modules = [
     createBotActivityModule({ logger, prisma }),
@@ -33,34 +33,34 @@ async function main(): Promise<void> {
     createWelcomeModule({ logger, prisma }),
     createStickyModule({ logger, prisma }),
     createEventLogModule({ logger, prisma })
-  ];
-  const commands = collectCommands(modules);
-  const componentHandlers = collectComponentHandlers(modules);
-  const modalSubmitHandlers = collectModalSubmitHandlers(modules);
+  ]
+  const commands = collectCommands(modules)
+  const componentHandlers = collectComponentHandlers(modules)
+  const modalSubmitHandlers = collectModalSubmitHandlers(modules)
 
-  registerBotModules(client, modules, logger);
+  registerBotModules(client, modules, logger)
   registerInteractionRouter(client, commands, logger, {
     componentHandlers,
     modalSubmitHandlers
-  });
+  })
 
   client.once(Events.ClientReady, async (readyClient) => {
-    await syncGuildCommands(readyClient, commands, logger);
-    logger.info({ user: readyClient.user.tag }, "Discord bot is ready");
-    await markHealthy(config.healthcheckFile);
-  });
+    await syncGuildCommands(readyClient, commands, logger)
+    logger.info({ user: readyClient.user.tag }, 'Discord bot is ready')
+    await markHealthy(config.healthcheckFile)
+  })
 
   client.on(Events.GuildCreate, async (guild) => {
-    await syncCommandsForGuild(guild, commands, logger);
-  });
+    await syncCommandsForGuild(guild, commands, logger)
+  })
 
-  setupShutdown({ client, prisma, healthcheckFile: config.healthcheckFile, logger });
+  setupShutdown({ client, prisma, healthcheckFile: config.healthcheckFile, logger })
 
-  await client.login(config.discordToken);
+  await client.login(config.discordToken)
 }
 
 main().catch((error) => {
-  const logger = createLogger("fatal");
-  logger.fatal({ error }, "Failed to start Discord bot");
-  process.exit(1);
-});
+  const logger = createLogger('fatal')
+  logger.fatal({ error }, 'Failed to start Discord bot')
+  process.exit(1)
+})

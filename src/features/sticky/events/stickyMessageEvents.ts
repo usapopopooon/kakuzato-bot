@@ -1,9 +1,9 @@
-import { Events } from "discord.js";
+import { Events } from 'discord.js'
 import type {
   AnyDiscordEventHandler,
   DiscordEventHandler
-} from "../../../platform/discord/botModule";
-import type { StickyMessageService } from "../services/stickyMessageService";
+} from '../../../platform/discord/botModule'
+import type { StickyMessageService } from '../services/stickyMessageService'
 
 export function createStickyMessageEvents(service: StickyMessageService): AnyDiscordEventHandler[] {
   return [
@@ -11,7 +11,7 @@ export function createStickyMessageEvents(service: StickyMessageService): AnyDis
     createMessageCreateEvent(service),
     createChannelDeleteEvent(service),
     createGuildDeleteEvent(service)
-  ];
+  ]
 }
 
 function createClientReadyEvent(
@@ -21,9 +21,9 @@ function createClientReadyEvent(
     name: Events.ClientReady,
     once: true,
     execute: async () => {
-      await service.loadConfiguredChannels();
+      await service.loadConfiguredChannels()
     }
-  };
+  }
 }
 
 function createMessageCreateEvent(
@@ -32,9 +32,9 @@ function createMessageCreateEvent(
   return {
     name: Events.MessageCreate,
     execute: async (message) => {
-      await service.handleMessage(message);
+      await service.handleMessage(message)
     }
-  };
+  }
 }
 
 function createChannelDeleteEvent(
@@ -43,9 +43,9 @@ function createChannelDeleteEvent(
   return {
     name: Events.ChannelDelete,
     execute: async (channel) => {
-      await service.deleteChannel(channel.id);
+      await service.deleteChannel(channel.id)
     }
-  };
+  }
 }
 
 function createGuildDeleteEvent(
@@ -54,7 +54,7 @@ function createGuildDeleteEvent(
   return {
     name: Events.GuildDelete,
     execute: async (guild) => {
-      await service.deleteByGuild(guild.id);
+      await service.deleteByGuild(guild.id)
     }
-  };
+  }
 }
