@@ -1,12 +1,14 @@
 import type { AppPrismaClient } from '../../../platform/database/prisma'
 
 export const defaultWelcomeMessageContent = 'Welcome, {mention}!'
+export const defaultWelcomeBannerMessageTemplate = '{displayName} さんが召喚されました！'
 
 export type WelcomeConfig = {
   guildId: string
   channelId: string
   enabled: boolean
   messageContent: string
+  bannerMessageTemplate: string
   updatedAt: string
 }
 
@@ -28,7 +30,7 @@ export class WelcomeConfigRepository {
   async setChannel(guildId: string, channelId: string): Promise<WelcomeConfig> {
     const current = await this.prisma.welcomeConfig.findUnique({
       where: { guildId },
-      select: { messageContent: true }
+      select: { messageContent: true, bannerMessageTemplate: true }
     })
     const config = await this.prisma.welcomeConfig.upsert({
       where: { guildId },
@@ -36,7 +38,8 @@ export class WelcomeConfigRepository {
         guildId,
         channelId,
         enabled: true,
-        messageContent: current?.messageContent ?? defaultWelcomeMessageContent
+        messageContent: current?.messageContent ?? defaultWelcomeMessageContent,
+        bannerMessageTemplate: current?.bannerMessageTemplate ?? defaultWelcomeBannerMessageTemplate
       },
       update: {
         channelId,
@@ -52,6 +55,26 @@ export class WelcomeConfigRepository {
       .update({
         where: { guildId },
         data: { messageContent }
+      })
+      .catch((error: unknown) => {
+        if (isRecordNotFoundError(error)) {
+          return undefined
+        }
+
+        throw error
+      })
+
+    return config ? toWelcomeConfig(config) : undefined
+  }
+
+  async setBannerMessage(
+    guildId: string,
+    bannerMessageTemplate: string
+  ): Promise<WelcomeConfig | undefined> {
+    const config = await this.prisma.welcomeConfig
+      .update({
+        where: { guildId },
+        data: { bannerMessageTemplate }
       })
       .catch((error: unknown) => {
         if (isRecordNotFoundError(error)) {
@@ -87,6 +110,7 @@ function toWelcomeConfig(config: {
   channelId: string
   enabled: boolean
   messageContent: string
+  bannerMessageTemplate: string
   updatedAt: Date
 }): WelcomeConfig {
   return {
@@ -94,6 +118,7 @@ function toWelcomeConfig(config: {
     channelId: config.channelId,
     enabled: config.enabled,
     messageContent: config.messageContent,
+    bannerMessageTemplate: config.bannerMessageTemplate,
     updatedAt: config.updatedAt.toISOString()
   }
 }

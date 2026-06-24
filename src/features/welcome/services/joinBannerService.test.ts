@@ -37,6 +37,7 @@ describe('JoinBannerService', () => {
       displayName: 'Alice & Bob <Test>',
       username: 'alice',
       guildName: 'Kakuzato',
+      headlineText: 'Alice & Bob <Test> さんが召喚されました！',
       memberCount: 42,
       avatarUrl: 'https://example.test/avatar.png'
     })
@@ -53,6 +54,7 @@ describe('JoinBannerService', () => {
         displayName: 'まるもじ Guest With A Very Very Long Name',
         username: 'guest',
         guildName: 'Kakuzato Server With A Long Guild Name',
+        headlineText: 'まるもじ Guest With A Very Very Long Name さんが召喚されました！',
         memberCount: 12345
       },
       1100,
@@ -86,6 +88,7 @@ describe('JoinBannerService', () => {
       displayName: 'Timeout Guest',
       username: 'timeout',
       guildName: 'Kakuzato',
+      headlineText: 'Timeout Guest さんが召喚されました！',
       memberCount: 42,
       avatarUrl: 'https://example.test/slow-avatar.png'
     })
@@ -102,6 +105,7 @@ describe('JoinBannerService', () => {
         displayName: 'Mii',
         username: 'mii',
         guildName: 'Kakuzato',
+        headlineText: 'Mii さんが召喚されました！',
         memberCount: 42,
         avatarUrl: 'https://example.test/avatar.png'
       }
@@ -112,6 +116,7 @@ describe('JoinBannerService', () => {
         displayName: 'まるもじ Guest',
         username: 'guest',
         guildName: 'Kakuzato Server',
+        headlineText: 'まるもじ Guest さんが召喚されました！',
         memberCount: 42,
         avatarUrl: 'https://example.test/avatar.png'
       }
@@ -122,6 +127,7 @@ describe('JoinBannerService', () => {
         displayName: 'Very Very Long Display Name かわいい',
         username: 'long-name',
         guildName: 'Kakuzato Server With A Long Name',
+        headlineText: 'Very Very Long Display Name かわいい さんが召喚されました！',
         memberCount: 12345,
         avatarUrl: 'https://example.test/avatar.png'
       }

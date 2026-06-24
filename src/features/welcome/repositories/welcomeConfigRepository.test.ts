@@ -1,11 +1,16 @@
 import { describe, expect, it, vi } from 'vitest'
-import { defaultWelcomeMessageContent, WelcomeConfigRepository } from './welcomeConfigRepository'
+import {
+  defaultWelcomeBannerMessageTemplate,
+  defaultWelcomeMessageContent,
+  WelcomeConfigRepository
+} from './welcomeConfigRepository'
 
 type WelcomeRow = {
   guildId: string
   channelId: string
   enabled: boolean
   messageContent: string
+  bannerMessageTemplate: string
   updatedAt: Date
 }
 
@@ -72,12 +77,14 @@ describe('WelcomeConfigRepository', () => {
       guildId: 'guild-1',
       channelId: 'channel-1',
       enabled: true,
-      messageContent: defaultWelcomeMessageContent
+      messageContent: defaultWelcomeMessageContent,
+      bannerMessageTemplate: defaultWelcomeBannerMessageTemplate
     })
     await expect(repository.get('guild-1')).resolves.toMatchObject({
       channelId: 'channel-1',
       enabled: true,
-      messageContent: defaultWelcomeMessageContent
+      messageContent: defaultWelcomeMessageContent,
+      bannerMessageTemplate: defaultWelcomeBannerMessageTemplate
     })
   })
 
@@ -92,10 +99,24 @@ describe('WelcomeConfigRepository', () => {
     })
   })
 
+  it('updates the banner message while preserving the channel config', async () => {
+    const { repository } = createRepository()
+    await repository.setChannel('guild-1', 'channel-1')
+
+    await expect(
+      repository.setBannerMessage('guild-1', '{displayName} さんが召喚されました！')
+    ).resolves.toMatchObject({
+      channelId: 'channel-1',
+      enabled: true,
+      bannerMessageTemplate: '{displayName} さんが召喚されました！'
+    })
+  })
+
   it('returns undefined when updating a missing config', async () => {
     const { repository } = createRepository()
 
     await expect(repository.setMessage('guild-1', 'hello')).resolves.toBeUndefined()
+    await expect(repository.setBannerMessage('guild-1', 'hello')).resolves.toBeUndefined()
   })
 
   it('disables an existing config without removing the channel', async () => {

@@ -6,11 +6,15 @@ import {
   type ChatInputCommandInteraction
 } from 'discord.js'
 import type { DiscordCommand } from '../../../platform/discord/botModule'
-import { defaultWelcomeMessageContent } from '../repositories/welcomeConfigRepository'
+import {
+  defaultWelcomeBannerMessageTemplate,
+  defaultWelcomeMessageContent
+} from '../repositories/welcomeConfigRepository'
 import { isWelcomeSendableChannel, type WelcomeService } from '../services/welcomeService'
 
 const welcomePlaceholders = '{mention}, {username}, {displayName}, {guildName}, {memberCount}'
 const maxWelcomeMessageLength = 1_500
+const maxWelcomeBannerMessageLength = 160
 
 export function createWelcomeCommand(service: WelcomeService): DiscordCommand {
   return {
@@ -40,6 +44,18 @@ export function createWelcomeCommand(service: WelcomeService): DiscordCommand {
               .setName('content')
               .setDescription(`本文。使用可能: ${welcomePlaceholders}`)
               .setMaxLength(maxWelcomeMessageLength)
+              .setRequired(true)
+          )
+      )
+      .addSubcommand((subcommand) =>
+        subcommand
+          .setName('banner-message')
+          .setDescription('welcome画像内に表示するメッセージを設定します')
+          .addStringOption((option) =>
+            option
+              .setName('content')
+              .setDescription(`画像内メッセージ。使用可能: ${welcomePlaceholders}`)
+              .setMaxLength(maxWelcomeBannerMessageLength)
               .setRequired(true)
           )
       )
@@ -85,6 +101,11 @@ async function executeWelcomeCommand(
 
   if (subcommand === 'message') {
     await handleMessage(interaction, service)
+    return
+  }
+
+  if (subcommand === 'banner-message') {
+    await handleBannerMessage(interaction, service)
     return
   }
 
@@ -163,6 +184,38 @@ async function handleMessage(
   })
 }
 
+async function handleBannerMessage(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: WelcomeService
+): Promise<void> {
+  const content = interaction.options.getString('content', true).trim()
+
+  if (content.length === 0) {
+    await interaction.reply({
+      content: '画像内メッセージは空にできません。',
+      flags: MessageFlags.Ephemeral
+    })
+    return
+  }
+
+  const config = await service.setBannerMessage(interaction.guildId, content)
+
+  if (!config) {
+    await interaction.reply({
+      content: '先に `/welcome set` で送信先チャンネルを設定してください。',
+      flags: MessageFlags.Ephemeral
+    })
+    return
+  }
+
+  await interaction.reply({
+    content: `welcome画像内メッセージを設定しました。\n${formatMessageContent(
+      config.bannerMessageTemplate
+    )}`,
+    flags: MessageFlags.Ephemeral
+  })
+}
+
 async function handleDisable(
   interaction: ChatInputCommandInteraction<'cached'>,
   service: WelcomeService
@@ -185,6 +238,7 @@ async function handleStatus(
       content: [
         'welcome投稿は無効です。',
         `デフォルト本文: ${formatMessageContent(defaultWelcomeMessageContent)}`,
+        `デフォルト画像内メッセージ: ${formatMessageContent(defaultWelcomeBannerMessageTemplate)}`,
         `使用可能なプレースホルダー: ${welcomePlaceholders}`
       ].join('\n'),
       flags: MessageFlags.Ephemeral
@@ -196,6 +250,7 @@ async function handleStatus(
     content: [
       `welcome投稿は有効です。送信先: <#${config.channelId}>`,
       `本文: ${formatMessageContent(config.messageContent)}`,
+      `画像内メッセージ: ${formatMessageContent(config.bannerMessageTemplate)}`,
       `使用可能なプレースホルダー: ${welcomePlaceholders}`
     ].join('\n'),
     flags: MessageFlags.Ephemeral

@@ -101,6 +101,7 @@ describe('welcome command', () => {
         channelId: 'channel-1',
         enabled: true,
         messageContent: 'ようこそ、{mention}!',
+        bannerMessageTemplate: '{displayName} さんが召喚されました！',
         updatedAt: new Date().toISOString()
       })
     }
@@ -127,6 +128,43 @@ describe('welcome command', () => {
     })
   })
 
+  it('stores banner message content after the channel is configured', async () => {
+    const service = {
+      setBannerMessage: vi.fn().mockResolvedValue({
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        enabled: true,
+        messageContent: 'ようこそ、{mention}!',
+        bannerMessageTemplate: '{displayName} さんが召喚されました！',
+        updatedAt: new Date().toISOString()
+      })
+    }
+    const reply = vi.fn()
+    const command = createWelcomeCommand(service as unknown as WelcomeService)
+
+    await command.execute({
+      inCachedGuild: () => true,
+      guildId: 'guild-1',
+      memberPermissions: {
+        has: (permission: bigint) => permission === PermissionFlagsBits.Administrator
+      },
+      options: {
+        getSubcommand: () => 'banner-message',
+        getString: () => '{displayName} さんが召喚されました！'
+      },
+      reply
+    } as unknown as ChatInputCommandInteraction)
+
+    expect(service.setBannerMessage).toHaveBeenCalledWith(
+      'guild-1',
+      '{displayName} さんが召喚されました！'
+    )
+    expect(reply).toHaveBeenCalledWith({
+      content: 'welcome画像内メッセージを設定しました。\n{displayName} さんが召喚されました！',
+      flags: MessageFlags.Ephemeral
+    })
+  })
+
   it('sends a test welcome through the configured service', async () => {
     const member = { id: 'user-1' }
     const service = {
@@ -135,6 +173,7 @@ describe('welcome command', () => {
         channelId: 'channel-1',
         enabled: true,
         messageContent: 'Welcome, {mention}!',
+        bannerMessageTemplate: '{displayName} さんが召喚されました！',
         updatedAt: new Date().toISOString()
       }),
       send: vi.fn().mockResolvedValue(true)

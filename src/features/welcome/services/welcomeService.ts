@@ -46,6 +46,13 @@ export class WelcomeService {
     return this.repository.setMessage(guildId, messageContent)
   }
 
+  async setBannerMessage(
+    guildId: string,
+    bannerMessageTemplate: string
+  ): Promise<WelcomeConfig | undefined> {
+    return this.repository.setBannerMessage(guildId, bannerMessageTemplate)
+  }
+
   async disable(guildId: string): Promise<WelcomeConfig | undefined> {
     return this.repository.disable(guildId)
   }
@@ -68,10 +75,18 @@ export class WelcomeService {
     }
 
     try {
+      const templateInput = {
+        userId: member.id,
+        username: member.user.username,
+        displayName: member.displayName,
+        guildName: member.guild.name,
+        memberCount: member.guild.memberCount
+      }
       const image = await this.bannerService.create({
         displayName: member.displayName,
         username: member.user.username,
         guildName: member.guild.name,
+        headlineText: renderWelcomeMessage(config.bannerMessageTemplate, templateInput),
         memberCount: member.guild.memberCount,
         avatarUrl: member.displayAvatarURL({ extension: 'png', size: 512 })
       })
@@ -79,13 +94,7 @@ export class WelcomeService {
         name: `welcome-${member.id}.png`
       })
       const content = limitWelcomeMessageContent(
-        renderWelcomeMessage(config.messageContent, {
-          userId: member.id,
-          username: member.user.username,
-          displayName: member.displayName,
-          guildName: member.guild.name,
-          memberCount: member.guild.memberCount
-        })
+        renderWelcomeMessage(config.messageContent, templateInput)
       )
 
       await channel.send({

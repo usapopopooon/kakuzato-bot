@@ -9,6 +9,7 @@ export type JoinBannerInput = {
   displayName: string
   username: string
   guildName: string
+  headlineText: string
   memberCount?: number
   avatarUrl?: string
 }
@@ -190,9 +191,9 @@ export function createJoinBannerTextLayout(
   avatarSize: number,
   avatarTop: number
 ): JoinBannerTextLayout {
-  const headline = fitText(`${input.displayName} just joined the server`, {
+  const headline = fitText(input.headlineText, {
     baseFontSize: Math.round(height * 0.086),
-    maxCharacters: 48,
+    maxCharacters: 64,
     maxWidth: Math.round(width * 0.78),
     minFontSize: Math.round(height * 0.052)
   })

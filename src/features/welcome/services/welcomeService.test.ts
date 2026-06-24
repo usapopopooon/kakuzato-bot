@@ -14,6 +14,7 @@ describe('WelcomeService', () => {
         channelId: 'channel-1',
         enabled: true,
         messageContent: `${'a'.repeat(discordMessageMaxLength - 2)}🙂tail`,
+        bannerMessageTemplate: '{displayName} さんが召喚されました！',
         updatedAt: new Date().toISOString()
       })
     }
@@ -51,5 +52,10 @@ describe('WelcomeService', () => {
     const options = send.mock.calls[0]?.[0] as { content: string }
     expect(options.content.length).toBeLessThanOrEqual(discordMessageMaxLength)
     expect(options.content.endsWith('...')).toBe(true)
+    expect(bannerService.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        headlineText: 'Alice さんが召喚されました！'
+      })
+    )
   })
 })

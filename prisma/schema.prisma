@@ -46,12 +46,13 @@ model BotActivityConfig {
 }
 
 model WelcomeConfig {
-  guildId        String   @id
-  channelId      String
-  enabled        Boolean  @default(true)
-  messageContent String   @db.Text
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  guildId               String   @id
+  channelId             String
+  enabled               Boolean  @default(true)
+  messageContent        String   @db.Text
+  bannerMessageTemplate String   @default("{displayName} さんが召喚されました！") @db.Text
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
 }
 
 model EventLogConfig {
