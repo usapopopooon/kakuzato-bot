@@ -1,6 +1,12 @@
 import {
   ChannelType,
   EmbedBuilder,
+  GuildDefaultMessageNotifications,
+  GuildExplicitContentFilter,
+  GuildMFALevel,
+  GuildVerificationLevel,
+  OverwriteType,
+  PermissionsBitField,
   type AnyThreadChannel,
   type Attachment,
   type Guild,
@@ -11,6 +17,7 @@ import {
   type Message,
   type PartialGuildMember,
   type PartialMessage,
+  type PermissionsString,
   type ReadonlyCollection,
   type Role,
   type Snowflake,
@@ -76,6 +83,86 @@ const colors: Record<EventLogType, number> = {
   thread_update: 0xe67e22,
   server_update: 0xe67e22,
   emoji_update: 0xe67e22
+};
+
+const permissionLabels: Partial<Record<PermissionsString, string>> = {
+  CreateInstantInvite: "招待を作成",
+  KickMembers: "メンバーをキック",
+  BanMembers: "メンバーをBAN",
+  Administrator: "管理者",
+  ManageChannels: "チャンネル管理",
+  ManageGuild: "サーバー管理",
+  AddReactions: "リアクションを追加",
+  ViewAuditLog: "監査ログを表示",
+  PrioritySpeaker: "優先スピーカー",
+  Stream: "配信",
+  ViewChannel: "チャンネルを見る",
+  SendMessages: "メッセージを送信",
+  SendTTSMessages: "TTSメッセージを送信",
+  ManageMessages: "メッセージ管理",
+  EmbedLinks: "埋め込みリンク",
+  AttachFiles: "ファイル添付",
+  ReadMessageHistory: "メッセージ履歴を読む",
+  MentionEveryone: "@everyone/@here",
+  UseExternalEmojis: "外部絵文字を使用",
+  ViewGuildInsights: "サーバーインサイトを表示",
+  Connect: "ボイス接続",
+  Speak: "発言",
+  MuteMembers: "メンバーをミュート",
+  DeafenMembers: "メンバーのスピーカーをミュート",
+  MoveMembers: "メンバーを移動",
+  UseVAD: "音声検出を使用",
+  ChangeNickname: "ニックネーム変更",
+  ManageNicknames: "ニックネーム管理",
+  ManageRoles: "ロール管理",
+  ManageWebhooks: "Webhook管理",
+  ManageEmojisAndStickers: "絵文字とスタンプ管理",
+  ManageGuildExpressions: "絵文字/スタンプ/サウンド管理",
+  UseApplicationCommands: "アプリコマンドを使用",
+  RequestToSpeak: "スピーカー参加をリクエスト",
+  ManageEvents: "イベント管理",
+  ManageThreads: "スレッド管理",
+  CreatePublicThreads: "公開スレッド作成",
+  CreatePrivateThreads: "プライベートスレッド作成",
+  UseExternalStickers: "外部スタンプを使用",
+  SendMessagesInThreads: "スレッドでメッセージ送信",
+  UseEmbeddedActivities: "アクティビティを使用",
+  ModerateMembers: "メンバーをタイムアウト",
+  ViewCreatorMonetizationAnalytics: "収益化分析を表示",
+  UseSoundboard: "サウンドボードを使用",
+  CreateGuildExpressions: "絵文字/スタンプ/サウンド作成",
+  CreateEvents: "イベント作成",
+  UseExternalSounds: "外部サウンドを使用",
+  SendVoiceMessages: "ボイスメッセージ送信",
+  SetVoiceChannelStatus: "ボイスチャンネルステータス設定",
+  SendPolls: "投票を送信",
+  UseExternalApps: "外部アプリを使用",
+  PinMessages: "メッセージをピン留め",
+  BypassSlowmode: "低速モードを無視"
+};
+
+const verificationLevelLabels: Record<number, string> = {
+  [GuildVerificationLevel.None]: "なし",
+  [GuildVerificationLevel.Low]: "低 (メール認証)",
+  [GuildVerificationLevel.Medium]: "中 (登録後5分以上)",
+  [GuildVerificationLevel.High]: "高 (参加後10分以上)",
+  [GuildVerificationLevel.VeryHigh]: "最高 (電話番号認証)"
+};
+
+const defaultNotificationLabels: Record<number, string> = {
+  [GuildDefaultMessageNotifications.AllMessages]: "すべてのメッセージ",
+  [GuildDefaultMessageNotifications.OnlyMentions]: "メンションのみ"
+};
+
+const explicitContentFilterLabels: Record<number, string> = {
+  [GuildExplicitContentFilter.Disabled]: "無効",
+  [GuildExplicitContentFilter.MembersWithoutRoles]: "ロールなしメンバーのみ",
+  [GuildExplicitContentFilter.AllMembers]: "全メンバー"
+};
+
+const mfaLevelLabels: Record<number, string> = {
+  [GuildMFALevel.None]: "なし",
+  [GuildMFALevel.Elevated]: "管理操作に2FA必須"
 };
 
 export function createLogEmbed(title: string, type: EventLogType): EmbedBuilder {
@@ -457,16 +544,21 @@ export function createChannelUpdatedEmbed(
   pushChange(
     changes,
     "NSFW",
-    getBooleanProp(before, "nsfw") ?? false,
-    getBooleanProp(after, "nsfw") ?? false
+    formatBoolean(getBooleanProp(before, "nsfw") ?? false),
+    formatBoolean(getBooleanProp(after, "nsfw") ?? false)
   );
   pushChange(changes, "カテゴリ", before.parent?.name ?? "(なし)", after.parent?.name ?? "(なし)");
-  pushChange(changes, "Bitrate", getNumberProp(before, "bitrate"), getNumberProp(after, "bitrate"));
+  pushChange(
+    changes,
+    "Bitrate",
+    formatBitrate(getNumberProp(before, "bitrate")),
+    formatBitrate(getNumberProp(after, "bitrate"))
+  );
   pushChange(
     changes,
     "人数上限",
-    getNumberProp(before, "userLimit"),
-    getNumberProp(after, "userLimit")
+    formatUserLimit(getNumberProp(before, "userLimit")),
+    formatUserLimit(getNumberProp(after, "userLimit"))
   );
 
   const beforeOverwrites = formatPermissionOverwrites(before);
@@ -519,8 +611,8 @@ export function createRoleEmbed(
       inline: false
     },
     {
-      name: "権限Bitfield",
-      value: inlineCode(role.permissions.bitfield.toString()),
+      name: "権限",
+      value: truncateContent(formatPermissionBitfield(role.permissions.bitfield)),
       inline: false
     }
   );
@@ -544,12 +636,7 @@ export function createRoleUpdatedEmbed(
     formatBoolean(before.mentionable),
     formatBoolean(after.mentionable)
   );
-  pushChange(
-    changes,
-    "権限Bitfield",
-    before.permissions.bitfield.toString(),
-    after.permissions.bitfield.toString()
-  );
+  pushPermissionChange(changes, before.permissions.bitfield, after.permissions.bitfield);
 
   if (changes.length === 0) {
     return undefined;
@@ -753,20 +840,30 @@ export function createGuildUpdatedEmbed(
 
   pushChange(changes, "名前", before.name, after.name);
   pushChange(changes, "説明", before.description, after.description);
-  pushChange(changes, "認証レベル", before.verificationLevel, after.verificationLevel);
+  pushChange(
+    changes,
+    "認証レベル",
+    formatEnumLabel(verificationLevelLabels, before.verificationLevel),
+    formatEnumLabel(verificationLevelLabels, after.verificationLevel)
+  );
   pushChange(
     changes,
     "通知設定",
-    before.defaultMessageNotifications,
-    after.defaultMessageNotifications
+    formatEnumLabel(defaultNotificationLabels, before.defaultMessageNotifications),
+    formatEnumLabel(defaultNotificationLabels, after.defaultMessageNotifications)
   );
   pushChange(
     changes,
     "コンテンツフィルター",
-    before.explicitContentFilter,
-    after.explicitContentFilter
+    formatEnumLabel(explicitContentFilterLabels, before.explicitContentFilter),
+    formatEnumLabel(explicitContentFilterLabels, after.explicitContentFilter)
   );
-  pushChange(changes, "MFAレベル", before.mfaLevel, after.mfaLevel);
+  pushChange(
+    changes,
+    "MFAレベル",
+    formatEnumLabel(mfaLevelLabels, before.mfaLevel),
+    formatEnumLabel(mfaLevelLabels, after.mfaLevel)
+  );
   pushChange(changes, "優先ロケール", before.preferredLocale, after.preferredLocale);
   pushChange(changes, "AFKチャンネル", before.afkChannel?.name, after.afkChannel?.name);
   pushChange(changes, "システムチャンネル", before.systemChannel?.name, after.systemChannel?.name);
@@ -978,12 +1075,43 @@ function pushChange(changes: string[], label: string, before: unknown, after: un
   }
 }
 
+function pushPermissionChange(changes: string[], before: unknown, after: unknown): void {
+  const beforeBits = toPermissionBitfield(before);
+  const afterBits = toPermissionBitfield(after);
+
+  if (beforeBits === undefined || afterBits === undefined) {
+    pushChange(changes, "権限", formatPermissionBitfield(before), formatPermissionBitfield(after));
+    return;
+  }
+
+  if (beforeBits === afterBits) {
+    return;
+  }
+
+  const added = afterBits & ~beforeBits;
+  const removed = beforeBits & ~afterBits;
+  const lines: string[] = [];
+
+  if (added !== 0n) {
+    lines.push(`+ ${formatPermissionBitfield(added)}`);
+  }
+  if (removed !== 0n) {
+    lines.push(`- ${formatPermissionBitfield(removed)}`);
+  }
+
+  changes.push(`**権限:**\n${lines.join("\n")}`);
+}
+
 function formatChangeValue(value: unknown): string {
   if (value === null || value === undefined || value === "") {
     return "(なし)";
   }
 
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+  if (typeof value === "boolean") {
+    return formatBoolean(value);
+  }
+
+  if (typeof value === "string" || typeof value === "number") {
     return String(value);
   }
 
@@ -996,6 +1124,57 @@ function formatChangeValue(value: unknown): string {
   }
 
   return JSON.stringify(value);
+}
+
+function formatPermissionBitfield(value: unknown): string {
+  const bitfield = toPermissionBitfield(value);
+
+  if (bitfield === undefined) {
+    return "不明";
+  }
+  if (bitfield === 0n) {
+    return "なし";
+  }
+
+  const permissions = new PermissionsBitField(bitfield).toArray();
+
+  if (permissions.length === 0) {
+    return `不明な権限 (bitfield: ${inlineCode(bitfield.toString())})`;
+  }
+
+  return permissions.map(formatPermissionName).join(", ");
+}
+
+function toPermissionBitfield(value: unknown): bigint | undefined {
+  if (typeof value === "bigint") {
+    return value;
+  }
+
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) {
+    return BigInt(value);
+  }
+
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    return BigInt(value);
+  }
+
+  if (typeof value === "object" && value !== null && "bitfield" in value) {
+    return toPermissionBitfield((value as { bitfield?: unknown }).bitfield);
+  }
+
+  return undefined;
+}
+
+function formatPermissionName(permission: PermissionsString): string {
+  return permissionLabels[permission] ?? permission;
+}
+
+function formatEnumLabel(labels: Record<number, string>, value: number | null | undefined): string {
+  if (value === null || value === undefined) {
+    return "(なし)";
+  }
+
+  return labels[value] ?? `不明 (${value})`;
 }
 
 function mergeAuditReason(
@@ -1038,6 +1217,17 @@ function isImageAttachment(attachment: Attachment): boolean {
   return /\.(png|jpe?g|gif|webp|bmp|tiff|svg)$/i.test(attachment.name);
 }
 
+type PermissionOverwriteData = {
+  id?: string;
+  type?: number;
+  allow?: { bitfield?: unknown };
+  deny?: { bitfield?: unknown };
+};
+
+type CacheLike<T> = {
+  get(id: string): T | undefined;
+};
+
 function formatPermissionOverwrites(channel: object): string | undefined {
   const cache = (channel as { permissionOverwrites?: { cache?: Map<string, unknown> } })
     .permissionOverwrites?.cache;
@@ -1048,17 +1238,54 @@ function formatPermissionOverwrites(channel: object): string | undefined {
 
   return [...cache.values()]
     .map((overwrite) => {
-      const data = overwrite as {
-        id?: string;
-        type?: number;
-        allow?: { bitfield?: bigint };
-        deny?: { bitfield?: bigint };
-      };
-      return `- target=${data.id ?? "unknown"}, type=${data.type ?? "unknown"}, allow=${
-        data.allow?.bitfield?.toString() ?? "0"
-      }, deny=${data.deny?.bitfield?.toString() ?? "0"}`;
+      const data = overwrite as PermissionOverwriteData;
+      return `- 対象: ${formatPermissionOverwriteTarget(channel, data)} / 許可: ${formatPermissionBitfield(
+        data.allow
+      )} / 拒否: ${formatPermissionBitfield(data.deny)}`;
     })
     .join("\n");
+}
+
+function formatPermissionOverwriteTarget(channel: object, overwrite: PermissionOverwriteData): string {
+  if (!overwrite.id) {
+    return "不明";
+  }
+
+  const guild = (
+    channel as {
+      guild?: {
+        roles?: { cache?: CacheLike<Role> };
+        members?: { cache?: CacheLike<GuildMember> };
+      };
+    }
+  ).guild;
+
+  if (overwrite.type === OverwriteType.Role) {
+    const role = guild?.roles?.cache?.get(overwrite.id);
+    return role
+      ? `${role.toString()} (${role.name}, ロール, ID: ${inlineCode(overwrite.id)})`
+      : `<@&${overwrite.id}> (ロール, ID: ${inlineCode(overwrite.id)})`;
+  }
+
+  if (overwrite.type === OverwriteType.Member) {
+    const member = guild?.members?.cache?.get(overwrite.id);
+    return member?.user
+      ? `${member.user.toString()} (${member.user.tag}, メンバー, ID: ${inlineCode(overwrite.id)})`
+      : `<@${overwrite.id}> (メンバー, ID: ${inlineCode(overwrite.id)})`;
+  }
+
+  return `${inlineCode(overwrite.id)} (${formatOverwriteType(overwrite.type)})`;
+}
+
+function formatOverwriteType(type: number | undefined): string {
+  if (type === OverwriteType.Role) {
+    return "ロール";
+  }
+  if (type === OverwriteType.Member) {
+    return "メンバー";
+  }
+
+  return type === undefined ? "種別不明" : `種別不明 (${type})`;
 }
 
 function formatBoolean(value: boolean): string {
@@ -1067,6 +1294,22 @@ function formatBoolean(value: boolean): string {
 
 function formatSeconds(seconds: number): string {
   return `${seconds}s`;
+}
+
+function formatBitrate(bitrate: number | null | undefined): string {
+  if (!bitrate) {
+    return "(なし)";
+  }
+
+  return `${Math.round(bitrate / 1000)} kbps`;
+}
+
+function formatUserLimit(limit: number | null | undefined): string {
+  if (limit === null || limit === undefined) {
+    return "(なし)";
+  }
+
+  return limit === 0 ? "無制限" : `${limit}人`;
 }
 
 function formatBytes(bytes: number): string {
