@@ -31,7 +31,7 @@ WORKDIR /app
 ENV NODE_ENV=production
 
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends openssl fontconfig fonts-yozvox-yozfont-cute fonts-seto fonts-noto-color-emoji \
+  && apt-get install -y --no-install-recommends openssl fontconfig fonts-yozvox-yozfont-cute fonts-seto fonts-noto-cjk fonts-noto-color-emoji \
   && rm -rf /var/lib/apt/lists/*
 
 COPY --from=production-deps /app/node_modules ./node_modules

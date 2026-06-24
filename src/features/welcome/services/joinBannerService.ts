@@ -40,6 +40,8 @@ export type JoinBannerTextLayout = {
 
 const bannerFontFamily =
   "YOzCFb, YOzCF, 'M PLUS Rounded 1c', 'Noto Sans JP', 'Noto Color Emoji', sans-serif"
+const headlineFontFamily =
+  "'Noto Sans CJK JP', 'Noto Sans JP', 'Yu Gothic', 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Color Emoji', sans-serif"
 const defaultAvatarFetchTimeoutMs = 5_000
 
 export class JoinBannerService {
@@ -173,7 +175,7 @@ function createTextLayer(
         </filter>
       </defs>
       <text x="${centerX}" y="${layout.headline.y}" text-anchor="middle"
-        font-family="${bannerFontFamily}"
+        font-family="${headlineFontFamily}"
         font-size="${layout.headline.fontSize}" font-weight="400" letter-spacing="0"
         fill="#f7f4fb" filter="url(#softShadow)">${escapeXml(layout.headline.text)}</text>
       <text x="${centerX}" y="${layout.footer.y}" text-anchor="middle"
