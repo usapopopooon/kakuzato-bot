@@ -6,7 +6,6 @@ import {
   bumpServices,
   getBumpServiceByBotId,
   getBumpServiceByKey,
-  targetBumpRoleName,
   type BumpServiceDefinition,
   type BumpServiceKey
 } from '../bumpServices'
@@ -18,6 +17,9 @@ const historySearchLimit = 100
 const reminderRetryDelayMs = 60_000
 const historyBumpActor: BumpDetectionActor = {
   toString: () => '履歴内のユーザー'
+}
+const unknownBumpActor: BumpDetectionActor = {
+  toString: () => 'bump 実行者'
 }
 
 type BumpEmbedLike = {
@@ -55,6 +57,7 @@ export type BumpHistoryChannel = BumpSendableChannel & {
 }
 
 type BumpDetectionActor = {
+  id?: string
   toString(): string
 }
 
@@ -184,22 +187,13 @@ export class BumpService {
       return
     }
 
-    const member = await resolveBumpMember(message)
+    const actor = await resolveBumpActor(message)
 
-    if (!member) {
+    if (actor === unknownBumpActor) {
       this.logger.warn(
         { guildId, channelId: message.channel.id, serviceKey: detectedService.key },
-        'Could not resolve bump command user'
+        'Could not resolve bump command user; sending notification with fallback actor'
       )
-      return
-    }
-
-    if (!hasBumpTargetRole(member)) {
-      this.logger.info(
-        { guildId, userId: member.id, roleName: targetBumpRoleName },
-        'Bump user does not have required role'
-      )
-      return
     }
 
     if (!isBumpSendableChannel(message.channel)) {
@@ -226,7 +220,7 @@ export class BumpService {
       guild: message.guild,
       channel: message.channel,
       service: detectedService,
-      member,
+      member: actor,
       remindAt,
       reminder
     })
@@ -234,7 +228,7 @@ export class BumpService {
       {
         guildId,
         serviceKey: detectedService.key,
-        userId: member.id,
+        userId: actor.id,
         remindAt: remindAt.toISOString()
       },
       'Detected bump success'
@@ -453,37 +447,14 @@ export function detectBumpSuccess(message: BumpMessageLike): BumpServiceDefiniti
     return undefined
   }
 
-  for (const embed of message.embeds ?? []) {
-    const title = embed.title ?? ''
-    const description = embed.description ?? ''
-    const fields = embed.fields ?? []
+  const searchableText = collectBumpSearchableText(message, service)
 
-    for (const keyword of service.successKeywords) {
-      if (service.checkTitle && title.includes(keyword)) {
-        return service
-      }
-
-      if (service.checkDescription && description.includes(keyword)) {
-        return service
-      }
-
-      if (
-        service.checkFields &&
-        fields.some(
-          (field) => (field.name ?? '').includes(keyword) || (field.value ?? '').includes(keyword)
-        )
-      ) {
-        return service
-      }
-    }
+  if (containsBumpKeyword(searchableText, service.failureKeywords)) {
+    return undefined
   }
 
-  if (service.checkContent) {
-    const content = message.content ?? ''
-
-    if (service.successKeywords.some((keyword) => content.includes(keyword))) {
-      return service
-    }
+  if (containsBumpKeyword(searchableText, service.successKeywords)) {
+    return service
   }
 
   return undefined
@@ -499,13 +470,13 @@ export function createBumpDetectionEmbed(input: {
   const timestamp = Math.trunc(input.remindAt.getTime() / 1_000)
   const description = input.isEnabled
     ? [
-        `${input.member.toString()} さんが **${input.service.name}** を bump しました！`,
+        `${formatBumpActor(input.member)}が **${input.service.name}** を bump しました！`,
         '',
         `次の bump リマインドは <t:${timestamp}:t> に送信します。`,
         `現在の通知先: ${input.notificationTarget}`
       ].join('\n')
     : [
-        `${input.member.toString()} さんが **${input.service.name}** を bump しました！`,
+        `${formatBumpActor(input.member)}が **${input.service.name}** を bump しました！`,
         '',
         '通知は現在 **無効** です。',
         `現在の通知先: ${input.notificationTarget}`
@@ -553,9 +524,28 @@ export function isBumpHistoryChannel(channel: unknown): channel is BumpHistoryCh
   )
 }
 
-async function resolveBumpMember(message: Message): Promise<GuildMember | undefined> {
-  const interactionUserId = getInteractionUserId(message)
+async function resolveBumpActor(message: Message): Promise<BumpDetectionActor> {
+  const userId = getBumpUserId(message)
+  const member = userId ? await resolveBumpMember(message, userId) : undefined
 
+  if (member) {
+    return member
+  }
+
+  if (userId) {
+    return {
+      id: userId,
+      toString: () => `<@${userId}>`
+    }
+  }
+
+  return unknownBumpActor
+}
+
+async function resolveBumpMember(
+  message: Message,
+  interactionUserId = getBumpUserId(message)
+): Promise<GuildMember | undefined> {
   if (!interactionUserId || !message.guild) {
     return undefined
   }
@@ -576,8 +566,94 @@ function getInteractionUserId(message: Message): string | undefined {
   return metadata.interactionMetadata?.user?.id ?? metadata.interaction?.user?.id
 }
 
-function hasBumpTargetRole(member: GuildMember): boolean {
-  return member.roles.cache.some((role) => role.name === targetBumpRoleName)
+function getBumpUserId(message: Message): string | undefined {
+  return getInteractionUserId(message) ?? getMentionedUserId(message)
+}
+
+function getMentionedUserId(message: Message): string | undefined {
+  const mentions = message as {
+    mentions?: {
+      users?: {
+        first?: () => { id?: string } | null
+      }
+    }
+  }
+  const mentionedUserId = mentions.mentions?.users?.first?.()?.id
+
+  if (mentionedUserId) {
+    return mentionedUserId
+  }
+
+  const mentionText = collectBumpSearchableText(
+    {
+      content: message.content,
+      embeds: message.embeds
+    },
+    {
+      checkTitle: true,
+      checkDescription: true,
+      checkFields: true,
+      checkContent: true
+    }
+  ).join('\n')
+  const mentionMatch = /<@!?(\d{15,25})>/.exec(mentionText)
+
+  return mentionMatch?.[1]
+}
+
+function collectBumpSearchableText(
+  message: Pick<BumpMessageLike, 'content' | 'embeds'>,
+  options: Pick<
+    BumpServiceDefinition,
+    'checkTitle' | 'checkDescription' | 'checkFields' | 'checkContent'
+  >
+): string[] {
+  const text: string[] = []
+
+  for (const embed of message.embeds ?? []) {
+    if (options.checkTitle && embed.title) {
+      text.push(embed.title)
+    }
+
+    if (options.checkDescription && embed.description) {
+      text.push(embed.description)
+    }
+
+    if (options.checkFields) {
+      for (const field of embed.fields ?? []) {
+        if (field.name) {
+          text.push(field.name)
+        }
+
+        if (field.value) {
+          text.push(field.value)
+        }
+      }
+    }
+  }
+
+  if (options.checkContent && message.content) {
+    text.push(message.content)
+  }
+
+  return text
+}
+
+function containsBumpKeyword(text: readonly string[], keywords: readonly string[]): boolean {
+  const normalizedText = text.map(normalizeBumpText)
+  return keywords.some((keyword) => {
+    const normalizedKeyword = normalizeBumpText(keyword)
+    return normalizedText.some((value) => value.includes(normalizedKeyword))
+  })
+}
+
+function normalizeBumpText(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, '')
+}
+
+function formatBumpActor(actor: BumpDetectionActor): string {
+  const text = actor.toString()
+  return text.startsWith('<@') ? `${text} さん` : text
 }
 
 function resolveReminderRoleName(guild: Guild, roleId: string | undefined): string | undefined {

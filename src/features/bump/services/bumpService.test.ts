@@ -66,6 +66,19 @@ describe('bump detection', () => {
     expect(detectBumpSuccess(message)?.key).toBe('DISBOARD')
   })
 
+  it('detects DISBOARD success from English embed text', () => {
+    const message = createMessage({
+      author: { id: disboardBotId },
+      embeds: [
+        {
+          description: 'Bump done!'
+        }
+      ]
+    })
+
+    expect(detectBumpSuccess(message)?.key).toBe('DISBOARD')
+  })
+
   it('detects ディス速報 success from embed title', () => {
     const message = createMessage({
       author: { id: dissokuBotId },
@@ -123,6 +136,151 @@ describe('bump detection', () => {
     })
 
     expect(detectBumpSuccess(message)).toBeUndefined()
+  })
+
+  it('does not detect ディス速報 retry messages as success', () => {
+    const message = createMessage({
+      author: { id: dissokuBotId },
+      embeds: [
+        {
+          title: 'まだアップできません',
+          description: 'しばらく待ってからもう一度試してください。'
+        }
+      ]
+    })
+
+    expect(detectBumpSuccess(message)).toBeUndefined()
+  })
+})
+
+describe('BumpService message handling', () => {
+  it('sets a reminder for a bump user without requiring a Server Bumper role', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z')
+    const remindAt = new Date('2026-06-24T14:00:00.000Z')
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(now.getTime())
+    const member = {
+      id: 'user-1',
+      roles: {
+        cache: new Map()
+      },
+      toString: () => '<@user-1>'
+    }
+    const guild = {
+      id: 'guild-1',
+      roles: {
+        cache: {
+          get: vi.fn()
+        }
+      },
+      members: {
+        cache: new Map([['user-1', member]]),
+        fetch: vi.fn()
+      }
+    } as unknown as Guild
+    const send = vi.fn<BumpSendableChannel['send']>().mockResolvedValue({})
+    const channel = {
+      id: 'channel-1',
+      send
+    }
+    const message = {
+      author: { id: disboardBotId },
+      channel,
+      embeds: [{ description: 'サーバーの表示順をアップしました！' }],
+      guild,
+      interactionMetadata: {
+        user: {
+          id: 'user-1'
+        }
+      }
+    } as unknown as Message
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue({
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      }),
+      claimBumpDetection: vi
+        .fn()
+        .mockResolvedValue(createReminder(remindAt, { guildId: 'guild-1', channelId: 'channel-1' }))
+    }
+    const service = new BumpService(repository as never, { info: vi.fn(), warn: vi.fn() } as never)
+
+    try {
+      await service.handleMessage(message)
+    } finally {
+      dateNow.mockRestore()
+    }
+
+    expect(repository.claimBumpDetection).toHaveBeenCalledWith(
+      'guild-1',
+      'channel-1',
+      'DISBOARD',
+      remindAt
+    )
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send.mock.calls[0]?.[0].embeds?.[0]?.toJSON().description).toContain('<@user-1> さんが')
+  })
+
+  it('sets a reminder when the bump user is only present as a mention', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z')
+    const remindAt = new Date('2026-06-24T14:00:00.000Z')
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(now.getTime())
+    const guild = {
+      id: 'guild-1',
+      roles: {
+        cache: {
+          get: vi.fn()
+        }
+      },
+      members: {
+        cache: new Map(),
+        fetch: vi.fn().mockRejectedValue(new Error('missing member'))
+      }
+    } as unknown as Guild
+    const send = vi.fn<BumpSendableChannel['send']>().mockResolvedValue({})
+    const channel = {
+      id: 'channel-1',
+      send
+    }
+    const message = {
+      author: { id: dissokuBotId },
+      channel,
+      embeds: [{ description: '<@123456789012345678>\nアップしました!' }],
+      guild
+    } as unknown as Message
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue({
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      }),
+      claimBumpDetection: vi.fn().mockResolvedValue(
+        createReminder(remindAt, {
+          guildId: 'guild-1',
+          channelId: 'channel-1',
+          serviceKey: 'DISSOKU'
+        })
+      )
+    }
+    const service = new BumpService(repository as never, { info: vi.fn(), warn: vi.fn() } as never)
+
+    try {
+      await service.handleMessage(message)
+    } finally {
+      dateNow.mockRestore()
+    }
+
+    expect(repository.claimBumpDetection).toHaveBeenCalledWith(
+      'guild-1',
+      'channel-1',
+      'DISSOKU',
+      remindAt
+    )
+    expect(send.mock.calls[0]?.[0].embeds?.[0]?.toJSON().description).toContain(
+      '<@123456789012345678> さんが'
+    )
   })
 })
 
