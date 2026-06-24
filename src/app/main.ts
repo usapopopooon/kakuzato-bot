@@ -18,6 +18,7 @@ import { createBotActivityModule } from '../features/bot-activity/botActivity.mo
 import { createEventLogModule } from '../features/event-log/eventLog.module'
 import { createStickyModule } from '../features/sticky/sticky.module'
 import { createWelcomeModule } from '../features/welcome/welcome.module'
+import { createVoiceNotifyModule } from '../features/voice-notify/voiceNotify.module'
 import { markHealthy } from './health'
 import { setupShutdown } from './shutdown'
 import { createBumpModule } from '../features/bump/bump.module'
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
     createBumpModule({ logger, prisma }),
     createWelcomeModule({ logger, prisma, joinBlocklist: autoModJoinBlocklist }),
     createStickyModule({ logger, prisma }),
+    createVoiceNotifyModule({ logger, prisma }),
     createEventLogModule({ logger, prisma })
   ]
   const commands = collectCommands(modules)

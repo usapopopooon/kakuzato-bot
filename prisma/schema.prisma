@@ -64,6 +64,19 @@ model EventLogConfig {
   updatedAt         DateTime @updatedAt
 }
 
+model VoiceNotifyConfig {
+  id              Int      @id @default(autoincrement())
+  guildId         String
+  voiceChannelId  String
+  notifyChannelId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([guildId, voiceChannelId])
+  @@index([guildId])
+  @@index([notifyChannelId])
+}
+
 model StickyMessageConfig {
   channelId    String            @id
   guildId      String

@@ -69,6 +69,18 @@ DISBOARD とディス速報の bump 成功を検知し、2 時間後にリマイ
 
 通知メッセージや `/bump status` に表示されるボタンから、サービスごとの通知 ON/OFF と通知先ロールを変更できます。通知先ロール未設定時はメンションなしで、ロールを設定した場合のみそのロールにメンションします。設定とリマインダーは PostgreSQL に保存されます。
 
+## `/voice-notify`
+
+指定した VC の入退室を、指定チャンネルへ短文で通知します。
+
+| コマンド               | 引数              | 説明                                         |
+| ---------------------- | ----------------- | -------------------------------------------- |
+| `/voice-notify add`    | `voice`, `notify` | 監視する VC と通知先チャンネルを設定します。 |
+| `/voice-notify remove` | `voice`           | 指定 VC の入退室通知を解除します。           |
+| `/voice-notify status` | なし              | VC 入退室通知の設定一覧を表示します。        |
+
+通知本文は `表示名 さんが #VC名 に入室しました。` / `表示名 さんが #VC名 から退室しました。` の形式です。設定は PostgreSQL に保存されます。
+
 ## `/automod`
 
 サーバー参加時の AutoMod を管理します。アバター未設定ユーザーと、作成から指定期間未満のアカウントを検知し、BAN/KICK/タイムアウトを実行できます。
@@ -121,6 +133,7 @@ DISBOARD とディス速報の bump 成功を検知し、2 時間後にリマイ
 /welcome test
 /sticky text channel:#notice
 /bump setup
+/voice-notify add voice:#general notify:#vc-log
 /automod log set channel:#server-log
 /automod account-age set minutes:1440 action:BAN
 /eventlog set channel:#server-log
