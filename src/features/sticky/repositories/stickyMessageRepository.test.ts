@@ -1,24 +1,97 @@
-import { mkdtemp, rm } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultStickyDelaySeconds, StickyMessageRepository } from "./stickyMessageRepository";
 
-const tempDirs: string[] = [];
+type StickyRow = {
+  guildId: string;
+  channelId: string;
+  messageId: string | null;
+  messageType: string;
+  title: string;
+  description: string;
+  color: number | null;
+  delaySeconds: number;
+  lastPostedAt: Date | null;
+  updatedAt: Date;
+};
 
-async function createRepository(): Promise<StickyMessageRepository> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-sticky-"));
-  tempDirs.push(dir);
-  return new StickyMessageRepository(path.join(dir, "configs.json"));
+function createRepository() {
+  const rows = new Map<string, StickyRow>();
+  const stickyMessageConfig = {
+    findUnique: vi.fn(
+      ({ where }: { where: { channelId: string } }) => rows.get(where.channelId) ?? null
+    ),
+    findMany: vi.fn(() => [...rows.values()]),
+    upsert: vi.fn(
+      ({
+        where,
+        create,
+        update
+      }: {
+        where: { channelId: string };
+        create: Omit<StickyRow, "updatedAt">;
+        update: Partial<Omit<StickyRow, "channelId" | "updatedAt">>;
+      }) => {
+        const current = rows.get(where.channelId);
+        const row = {
+          ...(current ?? create),
+          ...update,
+          updatedAt: new Date()
+        };
+        rows.set(where.channelId, row);
+        return row;
+      }
+    ),
+    update: vi.fn(
+      ({
+        where,
+        data
+      }: {
+        where: { channelId: string };
+        data: Partial<Omit<StickyRow, "channelId" | "updatedAt">>;
+      }) => {
+        const current = rows.get(where.channelId);
+
+        if (!current) {
+          return Promise.reject(createPrismaError("P2025"));
+        }
+
+        const row = { ...current, ...data, updatedAt: new Date() };
+        rows.set(where.channelId, row);
+        return Promise.resolve(row);
+      }
+    ),
+    delete: vi.fn(({ where }: { where: { channelId: string } }) => {
+      const current = rows.get(where.channelId);
+
+      if (!current) {
+        return Promise.reject(createPrismaError("P2025"));
+      }
+
+      rows.delete(where.channelId);
+      return Promise.resolve(current);
+    }),
+    deleteMany: vi.fn(({ where }: { where: { guildId: string } }) => {
+      let count = 0;
+
+      for (const [channelId, row] of rows) {
+        if (row.guildId === where.guildId) {
+          rows.delete(channelId);
+          count += 1;
+        }
+      }
+
+      return { count };
+    })
+  };
+
+  return {
+    repository: new StickyMessageRepository({ stickyMessageConfig } as never)
+  };
 }
-
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-});
 
 describe("StickyMessageRepository", () => {
   it("stores a text sticky config per channel", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
 
     await repository.set({
       guildId: "guild-1",
@@ -42,7 +115,7 @@ describe("StickyMessageRepository", () => {
   });
 
   it("normalizes invalid delay to the default", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
 
     await repository.set({
       guildId: "guild-1",
@@ -59,7 +132,7 @@ describe("StickyMessageRepository", () => {
   });
 
   it("updates the posted message id", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
     await repository.set({
       guildId: "guild-1",
       channelId: "channel-1",
@@ -77,8 +150,35 @@ describe("StickyMessageRepository", () => {
     });
   });
 
+  it("clears an old embed color when the next config has no color", async () => {
+    const { repository } = createRepository();
+    await repository.set({
+      guildId: "guild-1",
+      channelId: "channel-1",
+      messageType: "embed",
+      title: "title",
+      description: "colored",
+      color: 0xff0000,
+      delaySeconds: 5
+    });
+
+    await repository.set({
+      guildId: "guild-1",
+      channelId: "channel-1",
+      messageType: "embed",
+      title: "title",
+      description: "default color",
+      delaySeconds: 5
+    });
+
+    await expect(repository.get("channel-1")).resolves.toMatchObject({
+      description: "default color",
+      color: undefined
+    });
+  });
+
   it("deletes configs by guild", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
     await repository.set({
       guildId: "guild-1",
       channelId: "channel-1",
@@ -103,3 +203,9 @@ describe("StickyMessageRepository", () => {
     });
   });
 });
+
+function createPrismaError(code: string): Error & { code: string } {
+  const error = new Error(code) as Error & { code: string };
+  error.code = code;
+  return error;
+}

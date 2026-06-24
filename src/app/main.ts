@@ -1,7 +1,9 @@
 import { Events } from "discord.js";
 import { loadConfig } from "../platform/config/env";
+import { connectDatabase, createPrismaClient } from "../platform/database/prisma";
 import { createDiscordClient } from "../platform/discord/client";
 import {
+  collectComponentHandlers,
   collectCommands,
   collectModalSubmitHandlers,
   registerInteractionRouter,
@@ -16,23 +18,31 @@ import { createStickyModule } from "../features/sticky/sticky.module";
 import { createWelcomeModule } from "../features/welcome/welcome.module";
 import { markHealthy } from "./health";
 import { setupShutdown } from "./shutdown";
+import { createBumpModule } from "../features/bump/bump.module";
 
 async function main(): Promise<void> {
   const config = loadConfig();
   const logger = createLogger(config.logLevel);
+  const prisma = createPrismaClient(config.databaseUrl);
+  await connectDatabase(prisma, logger);
   const client = createDiscordClient();
 
   const modules = [
-    createBotActivityModule({ logger }),
-    createWelcomeModule({ logger }),
-    createStickyModule({ logger }),
-    createEventLogModule({ config, logger })
+    createBotActivityModule({ logger, prisma }),
+    createBumpModule({ logger, prisma }),
+    createWelcomeModule({ logger, prisma }),
+    createStickyModule({ logger, prisma }),
+    createEventLogModule({ logger, prisma })
   ];
   const commands = collectCommands(modules);
+  const componentHandlers = collectComponentHandlers(modules);
   const modalSubmitHandlers = collectModalSubmitHandlers(modules);
 
   registerBotModules(client, modules, logger);
-  registerInteractionRouter(client, commands, logger, modalSubmitHandlers);
+  registerInteractionRouter(client, commands, logger, {
+    componentHandlers,
+    modalSubmitHandlers
+  });
 
   client.once(Events.ClientReady, async (readyClient) => {
     await syncGuildCommands(readyClient, commands, logger);
@@ -44,7 +54,7 @@ async function main(): Promise<void> {
     await syncCommandsForGuild(guild, commands, logger);
   });
 
-  setupShutdown({ client, healthcheckFile: config.healthcheckFile, logger });
+  setupShutdown({ client, prisma, healthcheckFile: config.healthcheckFile, logger });
 
   await client.login(config.discordToken);
 }

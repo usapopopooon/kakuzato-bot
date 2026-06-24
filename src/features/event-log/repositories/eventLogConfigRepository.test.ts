@@ -1,25 +1,70 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { eventLogCategories } from "../eventLogCategories";
 import { EventLogConfigRepository } from "./eventLogConfigRepository";
 
-const tempDirs: string[] = [];
+type EventLogRow = {
+  guildId: string;
+  channelId: string;
+  enabled: boolean;
+  enabledCategories: string[];
+  updatedAt: Date;
+};
 
-async function createRepository(): Promise<EventLogConfigRepository> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-event-log-"));
-  tempDirs.push(dir);
-  return new EventLogConfigRepository(path.join(dir, "configs.json"));
+function createRepository() {
+  const rows = new Map<string, EventLogRow>();
+  const eventLogConfig = {
+    findUnique: vi.fn(
+      ({ where }: { where: { guildId: string } }) => rows.get(where.guildId) ?? null
+    ),
+    upsert: vi.fn(
+      ({
+        where,
+        create,
+        update
+      }: {
+        where: { guildId: string };
+        create: Omit<EventLogRow, "updatedAt">;
+        update: Partial<Omit<EventLogRow, "guildId" | "updatedAt">>;
+      }) => {
+        const current = rows.get(where.guildId);
+        const row = {
+          ...(current ?? create),
+          ...update,
+          updatedAt: new Date()
+        };
+        rows.set(where.guildId, row);
+        return row;
+      }
+    ),
+    update: vi.fn(
+      ({
+        where,
+        data
+      }: {
+        where: { guildId: string };
+        data: Partial<Omit<EventLogRow, "guildId" | "updatedAt">>;
+      }) => {
+        const current = rows.get(where.guildId);
+
+        if (!current) {
+          return Promise.reject(createPrismaError("P2025"));
+        }
+
+        const row = { ...current, ...data, updatedAt: new Date() };
+        rows.set(where.guildId, row);
+        return Promise.resolve(row);
+      }
+    )
+  };
+
+  return {
+    repository: new EventLogConfigRepository({ eventLogConfig } as never)
+  };
 }
-
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-});
 
 describe("EventLogConfigRepository", () => {
   it("stores an enabled channel config per guild", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
 
     const config = await repository.setChannel("guild-1", "channel-1");
 
@@ -36,22 +81,8 @@ describe("EventLogConfigRepository", () => {
     });
   });
 
-  it("persists configs across repository instances", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-event-log-"));
-    tempDirs.push(dir);
-    const filePath = path.join(dir, "configs.json");
-
-    await new EventLogConfigRepository(filePath).setChannel("guild-1", "channel-1");
-
-    await expect(new EventLogConfigRepository(filePath).get("guild-1")).resolves.toMatchObject({
-      channelId: "channel-1",
-      enabled: true,
-      enabledCategories: eventLogCategories
-    });
-  });
-
   it("toggles a category while preserving the channel config", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
     await repository.setChannel("guild-1", "channel-1");
 
     await expect(repository.setCategory("guild-1", "voice", false)).resolves.toMatchObject({
@@ -64,8 +95,29 @@ describe("EventLogConfigRepository", () => {
     });
   });
 
+  it("preserves an empty category list when all event logs are disabled", async () => {
+    const { repository } = createRepository();
+    await repository.setChannel("guild-1", "channel-1");
+
+    for (const category of eventLogCategories) {
+      await repository.setCategory("guild-1", category, false);
+    }
+
+    await expect(repository.get("guild-1")).resolves.toMatchObject({
+      channelId: "channel-1",
+      enabled: true,
+      enabledCategories: []
+    });
+  });
+
+  it("returns undefined when toggling a category before setup", async () => {
+    const { repository } = createRepository();
+
+    await expect(repository.setCategory("guild-1", "voice", false)).resolves.toBeUndefined();
+  });
+
   it("disables an existing config without removing the channel", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
     await repository.setChannel("guild-1", "channel-1");
 
     await expect(repository.disable("guild-1")).resolves.toMatchObject({
@@ -77,23 +129,10 @@ describe("EventLogConfigRepository", () => {
       enabled: false
     });
   });
-
-  it("continues processing writes after a previous write failure", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-event-log-"));
-    tempDirs.push(dir);
-    const blocker = path.join(dir, "blocker");
-    const repository = new EventLogConfigRepository(path.join(blocker, "configs.json"));
-
-    await writeFile(blocker, "not a directory", "utf8");
-
-    await expect(repository.setChannel("guild-1", "channel-1")).rejects.toThrow();
-
-    await rm(blocker, { force: true });
-
-    await expect(repository.setChannel("guild-1", "channel-1")).resolves.toMatchObject({
-      guildId: "guild-1",
-      channelId: "channel-1",
-      enabled: true
-    });
-  });
 });
+
+function createPrismaError(code: string): Error & { code: string } {
+  const error = new Error(code) as Error & { code: string };
+  error.code = code;
+  return error;
+}

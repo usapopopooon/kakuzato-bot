@@ -1,5 +1,4 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
+import type { AppPrismaClient } from "../../../platform/database/prisma";
 
 export type StickyMessageType = "text" | "embed";
 
@@ -16,44 +15,59 @@ export type StickyMessageConfig = {
   updatedAt: string;
 };
 
-type StickyMessageConfigFile = {
-  channels: Record<string, StickyMessageConfig>;
-};
-
 export const defaultStickyDelaySeconds = 5;
 export const defaultStickyEmbedColor = 0x85e7ad;
 export const maxStickyDelaySeconds = 3_600;
 export const minStickyDelaySeconds = 1;
 
 export class StickyMessageRepository {
-  private readonly filePath: string;
-  private pendingWrite: Promise<void> = Promise.resolve();
+  private readonly prisma: Pick<AppPrismaClient, "stickyMessageConfig">;
 
-  constructor(filePath: string) {
-    this.filePath = path.resolve(filePath);
+  constructor(prisma: Pick<AppPrismaClient, "stickyMessageConfig">) {
+    this.prisma = prisma;
   }
 
   async get(channelId: string): Promise<StickyMessageConfig | undefined> {
-    const data = await this.read();
-    return data.channels[channelId];
+    const config = await this.prisma.stickyMessageConfig.findUnique({
+      where: { channelId }
+    });
+
+    return config ? toStickyMessageConfig(config) : undefined;
   }
 
   async list(): Promise<StickyMessageConfig[]> {
-    const data = await this.read();
-    return Object.values(data.channels);
+    const configs = await this.prisma.stickyMessageConfig.findMany();
+    return configs.map(toStickyMessageConfig);
   }
 
   async set(config: Omit<StickyMessageConfig, "updatedAt">): Promise<StickyMessageConfig> {
-    const nextConfig = normalizeConfig(config.channelId, {
-      ...config,
-      updatedAt: new Date().toISOString()
+    const normalized = normalizeConfig(config.channelId, config);
+    const saved = await this.prisma.stickyMessageConfig.upsert({
+      where: { channelId: normalized.channelId },
+      create: {
+        guildId: normalized.guildId,
+        channelId: normalized.channelId,
+        messageId: normalized.messageId ?? null,
+        messageType: toPrismaMessageType(normalized.messageType),
+        title: normalized.title,
+        description: normalized.description,
+        color: normalized.color ?? null,
+        delaySeconds: normalized.delaySeconds,
+        lastPostedAt: parseOptionalDate(normalized.lastPostedAt)
+      },
+      update: {
+        guildId: normalized.guildId,
+        messageId: normalized.messageId ?? null,
+        messageType: toPrismaMessageType(normalized.messageType),
+        title: normalized.title,
+        description: normalized.description,
+        color: normalized.color ?? null,
+        delaySeconds: normalized.delaySeconds,
+        lastPostedAt: parseOptionalDate(normalized.lastPostedAt)
+      }
     });
 
-    await this.update((data) => {
-      data.channels[nextConfig.channelId] = nextConfig;
-    });
-
-    return nextConfig;
+    return toStickyMessageConfig(saved);
   }
 
   async updateMessage(
@@ -61,90 +75,47 @@ export class StickyMessageRepository {
     messageId: string,
     lastPostedAt: string
   ): Promise<StickyMessageConfig | undefined> {
-    let config: StickyMessageConfig | undefined;
+    const config = await this.prisma.stickyMessageConfig
+      .update({
+        where: { channelId },
+        data: {
+          messageId,
+          lastPostedAt: parseOptionalDate(lastPostedAt)
+        }
+      })
+      .catch((error: unknown) => {
+        if (isRecordNotFoundError(error)) {
+          return undefined;
+        }
 
-    await this.update((data) => {
-      const current = data.channels[channelId];
+        throw error;
+      });
 
-      if (!current) {
-        return;
-      }
-
-      config = {
-        ...current,
-        messageId,
-        lastPostedAt,
-        updatedAt: new Date().toISOString()
-      };
-      data.channels[channelId] = config;
-    });
-
-    return config;
+    return config ? toStickyMessageConfig(config) : undefined;
   }
 
   async delete(channelId: string): Promise<StickyMessageConfig | undefined> {
-    let config: StickyMessageConfig | undefined;
+    const config = await this.prisma.stickyMessageConfig
+      .delete({
+        where: { channelId }
+      })
+      .catch((error: unknown) => {
+        if (isRecordNotFoundError(error)) {
+          return undefined;
+        }
 
-    await this.update((data) => {
-      config = data.channels[channelId];
-      delete data.channels[channelId];
-    });
+        throw error;
+      });
 
-    return config;
+    return config ? toStickyMessageConfig(config) : undefined;
   }
 
   async deleteByGuild(guildId: string): Promise<number> {
-    let deleted = 0;
-
-    await this.update((data) => {
-      for (const [channelId, config] of Object.entries(data.channels)) {
-        if (config.guildId === guildId) {
-          delete data.channels[channelId];
-          deleted += 1;
-        }
-      }
+    const result = await this.prisma.stickyMessageConfig.deleteMany({
+      where: { guildId }
     });
 
-    return deleted;
-  }
-
-  private async update(mutator: (data: StickyMessageConfigFile) => void): Promise<void> {
-    const write = this.pendingWrite
-      .catch(() => undefined)
-      .then(async () => {
-        const data = await this.read();
-        mutator(data);
-        await mkdir(path.dirname(this.filePath), { recursive: true });
-        await writeFile(this.filePath, `${JSON.stringify(data, null, 2)}\n`, "utf8");
-      });
-
-    this.pendingWrite = write.catch(() => undefined);
-
-    await write;
-  }
-
-  private async read(): Promise<StickyMessageConfigFile> {
-    try {
-      const raw = await readFile(this.filePath, "utf8");
-      const parsed = JSON.parse(raw) as Partial<{
-        channels: Record<string, Partial<StickyMessageConfig>>;
-      }>;
-
-      return {
-        channels: Object.fromEntries(
-          Object.entries(parsed.channels ?? {}).map(([channelId, config]) => [
-            channelId,
-            normalizeConfig(channelId, config)
-          ])
-        )
-      };
-    } catch (error) {
-      if (isNodeError(error) && error.code === "ENOENT") {
-        return { channels: {} };
-      }
-
-      throw error;
-    }
+    return result.count;
   }
 }
 
@@ -177,6 +148,36 @@ function normalizeConfig(
   };
 }
 
+function toStickyMessageConfig(config: {
+  guildId: string;
+  channelId: string;
+  messageId: string | null;
+  messageType: string;
+  title: string;
+  description: string;
+  color: number | null;
+  delaySeconds: number;
+  lastPostedAt: Date | null;
+  updatedAt: Date;
+}): StickyMessageConfig {
+  return {
+    guildId: config.guildId,
+    channelId: config.channelId,
+    messageId: config.messageId ?? undefined,
+    messageType: config.messageType === "TEXT" ? "text" : "embed",
+    title: config.title,
+    description: config.description,
+    color: config.color ?? undefined,
+    delaySeconds: config.delaySeconds,
+    lastPostedAt: config.lastPostedAt?.toISOString(),
+    updatedAt: config.updatedAt.toISOString()
+  };
+}
+
+function toPrismaMessageType(messageType: StickyMessageType): "TEXT" | "EMBED" {
+  return messageType === "text" ? "TEXT" : "EMBED";
+}
+
 function normalizeColor(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isInteger(value)) {
     return undefined;
@@ -189,6 +190,20 @@ function normalizeColor(value: unknown): number | undefined {
   return value;
 }
 
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
+function parseOptionalDate(value: string | undefined): Date | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = new Date(value);
+  return Number.isNaN(date.valueOf()) ? null : date;
+}
+
+function isRecordNotFoundError(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2025"
+  );
 }

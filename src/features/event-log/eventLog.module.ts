@@ -1,4 +1,4 @@
-import type { AppConfig } from "../../platform/config/env";
+import type { AppPrismaClient } from "../../platform/database/prisma";
 import type { BotModule } from "../../platform/discord/botModule";
 import type { AppLogger } from "../../platform/logger/logger";
 import { createEventLogCommand } from "./commands/eventLogCommand";
@@ -7,12 +7,12 @@ import { EventLogConfigRepository } from "./repositories/eventLogConfigRepositor
 import { EventLogService } from "./services/eventLogService";
 
 type EventLogModuleDeps = {
-  config: Pick<AppConfig, "eventLogConfigPath">;
   logger: AppLogger;
+  prisma: AppPrismaClient;
 };
 
-export function createEventLogModule({ config, logger }: EventLogModuleDeps): BotModule {
-  const repository = new EventLogConfigRepository(config.eventLogConfigPath);
+export function createEventLogModule({ logger, prisma }: EventLogModuleDeps): BotModule {
+  const repository = new EventLogConfigRepository(prisma);
   const service = new EventLogService(repository, logger);
 
   return {

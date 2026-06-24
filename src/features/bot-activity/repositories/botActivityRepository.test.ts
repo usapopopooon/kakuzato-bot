@@ -1,64 +1,69 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { BotActivityRepository, defaultBotActivityName } from "./botActivityRepository";
 
-const tempDirs: string[] = [];
+function createRepository() {
+  const rows = new Map<string, { id: string; activityName: string; updatedAt: Date }>();
+  const botActivityConfig = {
+    findUnique: vi.fn(({ where }: { where: { id: string } }) => rows.get(where.id) ?? null),
+    upsert: vi.fn(
+      ({
+        where,
+        create,
+        update
+      }: {
+        where: { id: string };
+        create: { id: string; activityName: string };
+        update: { activityName: string };
+      }) => {
+        const current = rows.get(where.id);
+        const row = {
+          id: where.id,
+          activityName: current ? update.activityName : create.activityName,
+          updatedAt: new Date()
+        };
+        rows.set(where.id, row);
+        return row;
+      }
+    )
+  };
 
-async function createRepository(): Promise<BotActivityRepository> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-bot-activity-"));
-  tempDirs.push(dir);
-  return new BotActivityRepository(path.join(dir, "config.json"));
+  return {
+    repository: new BotActivityRepository({ botActivityConfig } as never),
+    botActivityConfig
+  };
 }
-
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-});
 
 describe("BotActivityRepository", () => {
   it("returns the default activity when no config exists", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
 
     await expect(repository.get()).resolves.toMatchObject({
       activityName: defaultBotActivityName
     });
   });
 
-  it("persists the configured activity name", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-bot-activity-"));
-    tempDirs.push(dir);
-    const filePath = path.join(dir, "config.json");
+  it("upserts the configured activity name", async () => {
+    const { repository, botActivityConfig } = createRepository();
 
-    await new BotActivityRepository(filePath).setName("サーバーを見守り中。");
-
-    await expect(new BotActivityRepository(filePath).get()).resolves.toMatchObject({
+    await expect(repository.setName("サーバーを見守り中。")).resolves.toMatchObject({
       activityName: "サーバーを見守り中。"
+    });
+    await expect(repository.get()).resolves.toMatchObject({
+      activityName: "サーバーを見守り中。"
+    });
+    expect(botActivityConfig.upsert).toHaveBeenCalledWith({
+      where: { id: "global" },
+      create: { id: "global", activityName: "サーバーを見守り中。" },
+      update: { activityName: "サーバーを見守り中。" }
     });
   });
 
   it("resets the activity name to the default", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
     await repository.setName("別の表示");
 
     await expect(repository.reset()).resolves.toMatchObject({
       activityName: defaultBotActivityName
-    });
-  });
-
-  it("recovers the write queue after a failed update", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-bot-activity-"));
-    tempDirs.push(dir);
-    const blockerPath = path.join(dir, "blocked");
-    const filePath = path.join(blockerPath, "config.json");
-    const repository = new BotActivityRepository(filePath);
-
-    await writeFile(blockerPath, "not a directory", "utf8");
-    await expect(repository.setName("失敗する表示")).rejects.toBeInstanceOf(Error);
-
-    await rm(blockerPath, { force: true });
-    await expect(repository.setName("復旧した表示")).resolves.toMatchObject({
-      activityName: "復旧した表示"
     });
   });
 });

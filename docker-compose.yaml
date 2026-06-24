@@ -1,26 +1,42 @@
 services:
-  data-permissions:
-    build: .
-    user: root
-    command: ["sh", "-c", "chown -R node:node /app/data"]
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-kakuzato_bot}
+      POSTGRES_USER: ${POSTGRES_USER:-kakuzato}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-password}
     volumes:
-      - bot-data:/app/data
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", 'pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  migrate:
+    build:
+      context: .
+      target: migrator
     restart: "no"
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kakuzato}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-kakuzato_bot}
 
   bot:
     build: .
     restart: unless-stopped
     depends_on:
-      data-permissions:
+      migrate:
         condition: service_completed_successfully
     environment:
       NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-kakuzato}:${POSTGRES_PASSWORD:-password}@db:5432/${POSTGRES_DB:-kakuzato_bot}
       DISCORD_TOKEN: ${DISCORD_TOKEN:?set DISCORD_TOKEN}
-      EVENT_LOG_CONFIG_PATH: /app/data/event-log-configs.json
       LOG_LEVEL: ${LOG_LEVEL:-info}
       HEALTHCHECK_FILE: /tmp/kakuzato-bot-ready
-    volumes:
-      - bot-data:/app/data
     healthcheck:
       test: ["CMD", "node", "dist/app/healthcheck.js"]
       interval: 30s
@@ -30,4 +46,4 @@ services:
     stop_grace_period: 30s
 
 volumes:
-  bot-data:
+  postgres-data:

@@ -1,5 +1,6 @@
 import type { BotModule } from "../../platform/discord/botModule";
 import type { AppLogger } from "../../platform/logger/logger";
+import type { AppPrismaClient } from "../../platform/database/prisma";
 import {
   createStickyMessageCommand,
   createStickyMessageModalSubmitHandler
@@ -8,14 +9,13 @@ import { createStickyMessageEvents } from "./events/stickyMessageEvents";
 import { StickyMessageRepository } from "./repositories/stickyMessageRepository";
 import { StickyMessageService } from "./services/stickyMessageService";
 
-const stickyMessageConfigPath = "data/sticky-message-configs.json";
-
 type StickyModuleDeps = {
   logger: AppLogger;
+  prisma: AppPrismaClient;
 };
 
-export function createStickyModule({ logger }: StickyModuleDeps): BotModule {
-  const repository = new StickyMessageRepository(stickyMessageConfigPath);
+export function createStickyModule({ logger, prisma }: StickyModuleDeps): BotModule {
+  const repository = new StickyMessageRepository(prisma);
   const service = new StickyMessageService(repository, logger);
 
   return {

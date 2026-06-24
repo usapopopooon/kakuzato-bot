@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum StickyMessageType {
+  TEXT
+  EMBED
+}
+
+enum BumpServiceKey {
+  DISBOARD
+  DISSOKU
+}
+
+model BotActivityConfig {
+  id           String   @id @default("global")
+  activityName String   @db.VarChar(128)
+  updatedAt    DateTime @updatedAt
+}
+
+model WelcomeConfig {
+  guildId        String   @id
+  channelId      String
+  enabled        Boolean  @default(true)
+  messageContent String   @db.Text
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model EventLogConfig {
+  guildId           String   @id
+  channelId         String
+  enabled           Boolean  @default(true)
+  enabledCategories String[] @default([])
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+}
+
+model StickyMessageConfig {
+  channelId    String            @id
+  guildId      String
+  messageId    String?
+  messageType  StickyMessageType
+  title        String            @default("")
+  description  String            @db.Text
+  color        Int?
+  delaySeconds Int               @default(5)
+  lastPostedAt DateTime?
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@index([guildId])
+}
+
+model BumpConfig {
+  guildId   String   @id
+  channelId String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BumpReminder {
+  id         Int            @id @default(autoincrement())
+  guildId    String
+  channelId  String         @default("")
+  serviceKey BumpServiceKey
+  remindAt   DateTime?
+  isEnabled  Boolean        @default(true)
+  roleId     String?
+  createdAt  DateTime       @default(now())
+  updatedAt  DateTime       @updatedAt
+
+  @@unique([guildId, serviceKey])
+  @@index([guildId])
+  @@index([isEnabled, remindAt])
+}

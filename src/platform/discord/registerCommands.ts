@@ -4,13 +4,23 @@ import {
   type ChatInputCommandInteraction,
   type Client,
   type Guild,
+  type MessageComponentInteraction,
   type ModalSubmitInteraction
 } from "discord.js";
 import type { AppLogger } from "../logger/logger";
-import type { BotModule, DiscordCommand, DiscordModalSubmitHandler } from "./botModule";
+import type {
+  BotModule,
+  DiscordCommand,
+  DiscordComponentHandler,
+  DiscordModalSubmitHandler
+} from "./botModule";
 
 export function collectCommands(modules: BotModule[]): DiscordCommand[] {
   return modules.flatMap((botModule) => botModule.commands ?? []);
+}
+
+export function collectComponentHandlers(modules: BotModule[]): DiscordComponentHandler[] {
+  return modules.flatMap((botModule) => botModule.componentHandlers ?? []);
 }
 
 export function collectModalSubmitHandlers(modules: BotModule[]): DiscordModalSubmitHandler[] {
@@ -21,9 +31,14 @@ export function registerInteractionRouter(
   client: Client,
   commands: DiscordCommand[],
   logger: AppLogger,
-  modalSubmitHandlers: DiscordModalSubmitHandler[] = []
+  handlers: {
+    componentHandlers?: DiscordComponentHandler[];
+    modalSubmitHandlers?: DiscordModalSubmitHandler[];
+  } = {}
 ): void {
   const commandMap = new Map(commands.map((command) => [command.data.name, command]));
+  const componentHandlers = handlers.componentHandlers ?? [];
+  const modalSubmitHandlers = handlers.modalSubmitHandlers ?? [];
 
   client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isChatInputCommand()) {
@@ -35,6 +50,20 @@ export function registerInteractionRouter(
       }
 
       await executeCommand(command, interaction, logger);
+      return;
+    }
+
+    if (interaction.isMessageComponent()) {
+      const handler = componentHandlers.find((candidate) =>
+        interaction.customId.startsWith(candidate.customIdPrefix)
+      );
+
+      if (!handler) {
+        logger.warn({ customId: interaction.customId }, "Unknown component interaction");
+        return;
+      }
+
+      await executeComponentHandler(handler, interaction, logger);
       return;
     }
 
@@ -90,6 +119,30 @@ async function executeCommand(
     );
 
     const message = "コマンドの実行中にエラーが発生しました。";
+
+    if (interaction.replied || interaction.deferred) {
+      await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+  }
+}
+
+async function executeComponentHandler(
+  handler: DiscordComponentHandler,
+  interaction: MessageComponentInteraction,
+  logger: AppLogger
+): Promise<void> {
+  try {
+    await handler.execute(interaction);
+  } catch (error) {
+    logger.error(
+      { error, customId: interaction.customId, guildId: interaction.guildId },
+      "Component interaction execution failed"
+    );
+
+    const message = "操作の処理中にエラーが発生しました。";
 
     if (interaction.replied || interaction.deferred) {
       await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });

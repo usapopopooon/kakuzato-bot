@@ -1,83 +1,58 @@
-import { mkdir, readFile, writeFile } from "node:fs/promises";
-import path from "node:path";
+import type { AppPrismaClient } from "../../../platform/database/prisma";
 
 export const defaultBotActivityName = "サーバーを管理中。";
+const botActivityConfigId = "global";
 
 export type BotActivityConfig = {
   activityName: string;
   updatedAt: string;
 };
 
-type BotActivityConfigFile = Partial<BotActivityConfig>;
-
 export class BotActivityRepository {
-  private readonly filePath: string;
-  private pendingWrite: Promise<void> = Promise.resolve();
+  private readonly prisma: Pick<AppPrismaClient, "botActivityConfig">;
 
-  constructor(filePath: string) {
-    this.filePath = path.resolve(filePath);
+  constructor(prisma: Pick<AppPrismaClient, "botActivityConfig">) {
+    this.prisma = prisma;
   }
 
   async get(): Promise<BotActivityConfig> {
-    return this.read();
+    const config = await this.prisma.botActivityConfig.findUnique({
+      where: { id: botActivityConfigId }
+    });
+
+    if (!config) {
+      return {
+        activityName: defaultBotActivityName,
+        updatedAt: new Date(0).toISOString()
+      };
+    }
+
+    return toBotActivityConfig(config);
   }
 
   async setName(activityName: string): Promise<BotActivityConfig> {
-    const config = {
-      activityName,
-      updatedAt: new Date().toISOString()
-    };
+    const config = await this.prisma.botActivityConfig.upsert({
+      where: { id: botActivityConfigId },
+      create: {
+        id: botActivityConfigId,
+        activityName
+      },
+      update: {
+        activityName
+      }
+    });
 
-    await this.update(config);
-
-    return config;
+    return toBotActivityConfig(config);
   }
 
   async reset(): Promise<BotActivityConfig> {
     return this.setName(defaultBotActivityName);
   }
-
-  private async update(config: BotActivityConfig): Promise<void> {
-    const write = this.pendingWrite
-      .catch(() => undefined)
-      .then(async () => {
-        await mkdir(path.dirname(this.filePath), { recursive: true });
-        await writeFile(this.filePath, `${JSON.stringify(config, null, 2)}\n`, "utf8");
-      });
-
-    this.pendingWrite = write.catch(() => undefined);
-
-    await write;
-  }
-
-  private async read(): Promise<BotActivityConfig> {
-    try {
-      const raw = await readFile(this.filePath, "utf8");
-      const parsed = JSON.parse(raw) as BotActivityConfigFile;
-
-      return normalizeConfig(parsed);
-    } catch (error) {
-      if (isNodeError(error) && error.code === "ENOENT") {
-        return normalizeConfig({});
-      }
-
-      throw error;
-    }
-  }
 }
 
-function normalizeConfig(config: BotActivityConfigFile): BotActivityConfig {
-  const activityName =
-    typeof config.activityName === "string" && config.activityName.trim().length > 0
-      ? config.activityName
-      : defaultBotActivityName;
-
+function toBotActivityConfig(config: { activityName: string; updatedAt: Date }): BotActivityConfig {
   return {
-    activityName,
-    updatedAt: config.updatedAt ?? new Date(0).toISOString()
+    activityName: config.activityName,
+    updatedAt: config.updatedAt.toISOString()
   };
-}
-
-function isNodeError(error: unknown): error is NodeJS.ErrnoException {
-  return error instanceof Error && "code" in error;
 }

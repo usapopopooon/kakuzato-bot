@@ -7,6 +7,22 @@ jobs:
   test:
     name: Lint, Typecheck, Test, Build
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: kakuzato_bot
+          POSTGRES_USER: kakuzato
+          POSTGRES_PASSWORD: password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U kakuzato -d kakuzato_bot"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://kakuzato:password@localhost:5432/kakuzato_bot
 
     steps:
       - name: Checkout
@@ -20,6 +36,12 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply migrations
+        run: npm run db:migrate:deploy
 
       - name: Lint
         run: npm run lint

@@ -1,24 +1,70 @@
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
-import os from "node:os";
-import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { defaultWelcomeMessageContent, WelcomeConfigRepository } from "./welcomeConfigRepository";
 
-const tempDirs: string[] = [];
+type WelcomeRow = {
+  guildId: string;
+  channelId: string;
+  enabled: boolean;
+  messageContent: string;
+  updatedAt: Date;
+};
 
-async function createRepository(): Promise<WelcomeConfigRepository> {
-  const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-welcome-"));
-  tempDirs.push(dir);
-  return new WelcomeConfigRepository(path.join(dir, "configs.json"));
+function createRepository() {
+  const rows = new Map<string, WelcomeRow>();
+  const welcomeConfig = {
+    findUnique: vi.fn(
+      ({ where }: { where: { guildId: string } }) => rows.get(where.guildId) ?? null
+    ),
+    upsert: vi.fn(
+      ({
+        where,
+        create,
+        update
+      }: {
+        where: { guildId: string };
+        create: Omit<WelcomeRow, "updatedAt">;
+        update: Partial<Omit<WelcomeRow, "guildId" | "updatedAt">>;
+      }) => {
+        const current = rows.get(where.guildId);
+        const row = {
+          ...(current ?? create),
+          ...update,
+          updatedAt: new Date()
+        };
+        rows.set(where.guildId, row);
+        return row;
+      }
+    ),
+    update: vi.fn(
+      ({
+        where,
+        data
+      }: {
+        where: { guildId: string };
+        data: Partial<Omit<WelcomeRow, "guildId" | "updatedAt">>;
+      }) => {
+        const current = rows.get(where.guildId);
+
+        if (!current) {
+          return Promise.reject(createPrismaError("P2025"));
+        }
+
+        const row = { ...current, ...data, updatedAt: new Date() };
+        rows.set(where.guildId, row);
+        return Promise.resolve(row);
+      }
+    )
+  };
+
+  return {
+    repository: new WelcomeConfigRepository({ welcomeConfig } as never),
+    rows
+  };
 }
-
-afterEach(async () => {
-  await Promise.all(tempDirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
-});
 
 describe("WelcomeConfigRepository", () => {
   it("stores an enabled channel config per guild", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
 
     const config = await repository.setChannel("guild-1", "channel-1");
 
@@ -35,22 +81,8 @@ describe("WelcomeConfigRepository", () => {
     });
   });
 
-  it("persists configs across repository instances", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-welcome-"));
-    tempDirs.push(dir);
-    const filePath = path.join(dir, "configs.json");
-
-    await new WelcomeConfigRepository(filePath).setChannel("guild-1", "channel-1");
-
-    await expect(new WelcomeConfigRepository(filePath).get("guild-1")).resolves.toMatchObject({
-      channelId: "channel-1",
-      enabled: true,
-      messageContent: defaultWelcomeMessageContent
-    });
-  });
-
   it("updates the message while preserving the channel config", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
     await repository.setChannel("guild-1", "channel-1");
 
     await expect(repository.setMessage("guild-1", "ようこそ、{mention}!")).resolves.toMatchObject({
@@ -60,8 +92,14 @@ describe("WelcomeConfigRepository", () => {
     });
   });
 
+  it("returns undefined when updating a missing config", async () => {
+    const { repository } = createRepository();
+
+    await expect(repository.setMessage("guild-1", "hello")).resolves.toBeUndefined();
+  });
+
   it("disables an existing config without removing the channel", async () => {
-    const repository = await createRepository();
+    const { repository } = createRepository();
     await repository.setChannel("guild-1", "channel-1");
 
     await expect(repository.disable("guild-1")).resolves.toMatchObject({
@@ -73,20 +111,10 @@ describe("WelcomeConfigRepository", () => {
       enabled: false
     });
   });
-
-  it("recovers the write queue after a failed update", async () => {
-    const dir = await mkdtemp(path.join(os.tmpdir(), "kakuzato-welcome-"));
-    tempDirs.push(dir);
-    const filePath = path.join(dir, "configs.json");
-    const repository = new WelcomeConfigRepository(filePath);
-
-    await writeFile(filePath, "{invalid", "utf8");
-    await expect(repository.setChannel("guild-1", "channel-1")).rejects.toBeInstanceOf(SyntaxError);
-
-    await writeFile(filePath, '{"guilds":{}}\n', "utf8");
-    await expect(repository.setChannel("guild-1", "channel-1")).resolves.toMatchObject({
-      channelId: "channel-1",
-      enabled: true
-    });
-  });
 });
+
+function createPrismaError(code: string): Error & { code: string } {
+  const error = new Error(code) as Error & { code: string };
+  error.code = code;
+  return error;
+}

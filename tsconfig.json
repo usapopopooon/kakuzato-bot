@@ -12,6 +12,6 @@
     "resolveJsonModule": true,
     "types": ["node", "vitest/globals"]
   },
-  "include": ["src/**/*.ts", "vitest.config.ts"],
+  "include": ["src/**/*.ts", "vitest.config.ts", "prisma.config.ts"],
   "exclude": ["dist", "node_modules"]
 }

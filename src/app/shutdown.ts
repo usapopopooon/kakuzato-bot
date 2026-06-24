@@ -1,14 +1,17 @@
 import type { Client } from "discord.js";
+import type { AppPrismaClient } from "../platform/database/prisma";
+import { disconnectDatabase } from "../platform/database/prisma";
 import type { AppLogger } from "../platform/logger/logger";
 import { clearHealthy } from "./health";
 
 type ShutdownOptions = {
   client: Client;
+  prisma: Pick<AppPrismaClient, "$disconnect">;
   healthcheckFile: string;
   logger: AppLogger;
 };
 
-export function setupShutdown({ client, healthcheckFile, logger }: ShutdownOptions): void {
+export function setupShutdown({ client, prisma, healthcheckFile, logger }: ShutdownOptions): void {
   let shuttingDown = false;
 
   const shutdown = async (signal: NodeJS.Signals) => {
@@ -21,6 +24,7 @@ export function setupShutdown({ client, healthcheckFile, logger }: ShutdownOptio
 
     await clearHealthy(healthcheckFile);
     await client.destroy();
+    await disconnectDatabase(prisma, logger);
     process.exit(0);
   };
 
