@@ -227,29 +227,25 @@ export class BumpRepository {
     return result.count > 0
   }
 
-  async toggleReminder(guildId: string, serviceKey: BumpServiceKey): Promise<BumpReminder> {
-    const current = await this.getReminder(guildId, serviceKey)
-
-    if (!current) {
-      const reminder = await this.prisma.bumpReminder.create({
-        data: {
-          guildId,
-          serviceKey,
-          isEnabled: false
-        }
-      })
-      return toBumpReminder(reminder)
-    }
-
-    const reminder = await this.prisma.bumpReminder.update({
+  async setReminderEnabled(
+    guildId: string,
+    serviceKey: BumpServiceKey,
+    isEnabled: boolean
+  ): Promise<BumpReminder> {
+    const reminder = await this.prisma.bumpReminder.upsert({
       where: {
         guildId_serviceKey: {
           guildId,
           serviceKey
         }
       },
-      data: {
-        isEnabled: !current.isEnabled
+      create: {
+        guildId,
+        serviceKey,
+        isEnabled
+      },
+      update: {
+        isEnabled
       }
     })
 

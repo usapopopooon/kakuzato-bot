@@ -308,6 +308,25 @@ describe('BumpRepository', () => {
     })
     expect(reminders[0]?.roleId).toBeNull()
   })
+
+  it('sets reminder notification enabled state explicitly', async () => {
+    const { repository, reminders } = createRepository()
+
+    await expect(
+      repository.setReminderEnabled('guild-1', 'DISBOARD', false)
+    ).resolves.toMatchObject({
+      isEnabled: false
+    })
+    expect(reminders[0]?.isEnabled).toBe(false)
+
+    await expect(repository.setReminderEnabled('guild-1', 'DISBOARD', true)).resolves.toMatchObject(
+      {
+        isEnabled: true
+      }
+    )
+    expect(reminders).toHaveLength(1)
+    expect(reminders[0]?.isEnabled).toBe(true)
+  })
 })
 
 function matchesRemindAtCondition(reminder: ReminderRow, condition: null | { lte: Date }): boolean {

@@ -4,17 +4,16 @@ import {
   PermissionFlagsBits,
   SlashCommandBuilder,
   type ChatInputCommandInteraction,
-  type MessageComponentInteraction
+  type SlashCommandSubcommandBuilder
 } from 'discord.js'
-import type { DiscordCommand, DiscordComponentHandler } from '../../../platform/discord/botModule'
-import { bumpServices, getBumpServiceByKey } from '../bumpServices'
-import type { BumpConfig, BumpReminder } from '../repositories/bumpRepository'
+import type { DiscordCommand } from '../../../platform/discord/botModule'
 import {
-  bumpComponentCustomIdPrefix,
-  createBumpNotificationComponents,
-  createBumpRoleSelectComponents,
-  parseBumpComponentCustomId
-} from '../services/bumpComponents'
+  bumpServices,
+  getBumpServiceByKey,
+  isBumpServiceKey,
+  type BumpServiceKey
+} from '../bumpServices'
+import type { BumpConfig, BumpReminder } from '../repositories/bumpRepository'
 import { isBumpHistoryChannel, type BumpService } from '../services/bumpService'
 
 const defaultEmbedColor = 0x85e7ad
@@ -51,16 +50,32 @@ export function createBumpCommand(service: BumpService): DiscordCommand {
           .setDescription('監視チャンネル履歴から前回 bump を判定して次回通知を設定します')
       )
       .addSubcommand((subcommand) =>
+        addBumpServiceOption(
+          subcommand
+            .setName('notify')
+            .setDescription('サービスごとの bump 通知 ON/OFF を設定します')
+        ).addBooleanOption((option) =>
+          option.setName('enabled').setDescription('通知を有効にするか').setRequired(true)
+        )
+      )
+      .addSubcommand((subcommand) =>
+        addBumpServiceOption(
+          subcommand.setName('role').setDescription('サービスごとの通知先ロールを設定します')
+        ).addRoleOption((option) =>
+          option.setName('role').setDescription('通知先ロール').setRequired(true)
+        )
+      )
+      .addSubcommand((subcommand) =>
+        addBumpServiceOption(
+          subcommand
+            .setName('role-reset')
+            .setDescription('サービスごとの通知先ロールをデフォルトに戻します')
+        )
+      )
+      .addSubcommand((subcommand) =>
         subcommand.setName('disable').setDescription('bump 監視を停止します')
       ),
     execute: (interaction) => executeBumpCommand(interaction, service)
-  }
-}
-
-export function createBumpComponentHandler(service: BumpService): DiscordComponentHandler {
-  return {
-    customIdPrefix: bumpComponentCustomIdPrefix,
-    execute: (interaction) => executeBumpComponent(interaction, service)
   }
 }
 
@@ -101,6 +116,21 @@ async function executeBumpCommand(
     return
   }
 
+  if (subcommand === 'notify') {
+    await handleNotify(interaction, service)
+    return
+  }
+
+  if (subcommand === 'role') {
+    await handleRole(interaction, service)
+    return
+  }
+
+  if (subcommand === 'role-reset') {
+    await handleRoleReset(interaction, service)
+    return
+  }
+
   if (subcommand === 'disable') {
     await handleDisable(interaction, service)
   }
@@ -122,8 +152,7 @@ async function handleSetup(
   const reminders = await service.listRemindersByGuild(interaction.guildId)
 
   await interaction.editReply({
-    embeds: [createBumpSetupEmbed(interaction.guild, config, reminders, sync.message)],
-    components: createBumpManagementComponents(interaction.guildId, reminders)
+    embeds: [createBumpSetupEmbed(interaction.guild, config, reminders, sync.message)]
   })
 }
 
@@ -136,7 +165,6 @@ async function handleStatus(
 
   await interaction.reply({
     embeds: [createBumpStatusEmbed(interaction.guild, config, reminders)],
-    components: config ? createBumpManagementComponents(interaction.guildId, reminders) : [],
     flags: MessageFlags.Ephemeral
   })
 }
@@ -163,11 +191,61 @@ async function handleSync(
 
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
   const sync = await service.syncFromHistory(interaction.guild, channel)
-  const reminders = await service.listRemindersByGuild(interaction.guildId)
 
   await interaction.editReply({
-    content: sync.message,
-    components: createBumpManagementComponents(interaction.guildId, reminders)
+    content: sync.message
+  })
+}
+
+async function handleNotify(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: BumpService
+): Promise<void> {
+  const serviceKey = getSelectedBumpServiceKey(interaction)
+  const enabled = interaction.options.getBoolean('enabled', true)
+  const reminder = await service.setReminderEnabled(interaction.guildId, serviceKey, enabled)
+  const serviceDefinition = getBumpServiceByKey(serviceKey)
+
+  await interaction.reply({
+    content: `**${serviceDefinition?.name ?? serviceKey}** の通知を **${
+      reminder.isEnabled ? '有効' : '無効'
+    }** にしました。`,
+    flags: MessageFlags.Ephemeral
+  })
+}
+
+async function handleRole(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: BumpService
+): Promise<void> {
+  const serviceKey = getSelectedBumpServiceKey(interaction)
+  const role = interaction.options.getRole('role', true)
+  const reminder = await service.setReminderRole(interaction.guildId, serviceKey, role.id)
+  const serviceDefinition = getBumpServiceByKey(serviceKey)
+
+  await interaction.reply({
+    content: `**${serviceDefinition?.name ?? serviceKey}** の通知先を ${formatNotificationTarget(
+      interaction.guild,
+      reminder.roleId
+    )} に変更しました。`,
+    flags: MessageFlags.Ephemeral
+  })
+}
+
+async function handleRoleReset(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: BumpService
+): Promise<void> {
+  const serviceKey = getSelectedBumpServiceKey(interaction)
+  const reminder = await service.setReminderRole(interaction.guildId, serviceKey, undefined)
+  const serviceDefinition = getBumpServiceByKey(serviceKey)
+
+  await interaction.reply({
+    content: `**${serviceDefinition?.name ?? serviceKey}** の通知先を ${formatNotificationTarget(
+      interaction.guild,
+      reminder.roleId
+    )} に戻しました。`,
+    flags: MessageFlags.Ephemeral
   })
 }
 
@@ -180,97 +258,6 @@ async function handleDisable(
   await interaction.reply({
     content: deleted ? 'bump 監視を停止しました。' : 'bump 監視は既に無効です。',
     flags: MessageFlags.Ephemeral
-  })
-}
-
-async function executeBumpComponent(
-  interaction: MessageComponentInteraction,
-  service: BumpService
-): Promise<void> {
-  if (!interaction.inCachedGuild()) {
-    await interaction.reply({
-      content: 'この操作はサーバー内でのみ実行できます。',
-      flags: MessageFlags.Ephemeral
-    })
-    return
-  }
-
-  if (!interaction.memberPermissions.has(PermissionFlagsBits.Administrator)) {
-    await interaction.reply({
-      content: 'この操作は管理者のみ実行できます。',
-      flags: MessageFlags.Ephemeral
-    })
-    return
-  }
-
-  const payload = parseBumpComponentCustomId(interaction.customId)
-
-  if (payload?.guildId !== interaction.guildId) {
-    await interaction.reply({
-      content: 'bump 通知設定の操作情報が不正です。',
-      flags: MessageFlags.Ephemeral
-    })
-    return
-  }
-
-  if (payload.action === 'toggle') {
-    const reminder = await service.toggleReminder(payload.guildId, payload.serviceKey)
-    const reminders = await service.listRemindersByGuild(payload.guildId)
-    const serviceDefinition = getBumpServiceByKey(payload.serviceKey)
-    await interaction.update({
-      components: createBumpManagementComponents(payload.guildId, reminders)
-    })
-    await interaction.followUp({
-      content: `**${serviceDefinition?.name ?? payload.serviceKey}** の通知を **${
-        reminder.isEnabled ? '有効' : '無効'
-      }** にしました。`,
-      flags: MessageFlags.Ephemeral
-    })
-    return
-  }
-
-  if (payload.action === 'role') {
-    const serviceDefinition = getBumpServiceByKey(payload.serviceKey)
-    await interaction.reply({
-      content: `**${serviceDefinition?.name ?? payload.serviceKey}** の通知先ロールを選択してください。`,
-      components: createBumpRoleSelectComponents(payload.guildId, payload.serviceKey),
-      flags: MessageFlags.Ephemeral
-    })
-    return
-  }
-
-  if (payload.action === 'role-select') {
-    if (!interaction.isRoleSelectMenu()) {
-      await interaction.reply({
-        content: 'ロール選択メニューから操作してください。',
-        flags: MessageFlags.Ephemeral
-      })
-      return
-    }
-
-    const roleId = interaction.values[0]
-    const reminder = await service.setReminderRole(payload.guildId, payload.serviceKey, roleId)
-    const reminders = await service.listRemindersByGuild(payload.guildId)
-    const serviceDefinition = getBumpServiceByKey(payload.serviceKey)
-    await interaction.update({
-      content: `**${serviceDefinition?.name ?? payload.serviceKey}** の通知先を ${formatNotificationTarget(
-        interaction.guild,
-        reminder.roleId
-      )} に変更しました。`,
-      components: createBumpManagementComponents(payload.guildId, reminders)
-    })
-    return
-  }
-
-  const reminder = await service.setReminderRole(payload.guildId, payload.serviceKey, undefined)
-  const reminders = await service.listRemindersByGuild(payload.guildId)
-  const serviceDefinition = getBumpServiceByKey(payload.serviceKey)
-  await interaction.update({
-    content: `**${serviceDefinition?.name ?? payload.serviceKey}** の通知先を ${formatNotificationTarget(
-      interaction.guild,
-      reminder.roleId
-    )} に戻しました。`,
-    components: createBumpManagementComponents(payload.guildId, reminders)
   })
 }
 
@@ -329,16 +316,6 @@ function canBotManageBump(
       PermissionFlagsBits.ReadMessageHistory
     ]) ?? false
   )
-}
-
-export function createBumpManagementComponents(
-  guildId: string,
-  reminders: readonly BumpReminder[]
-) {
-  return bumpServices.map((service) => {
-    const reminder = reminders.find((candidate) => candidate.serviceKey === service.key)
-    return createBumpNotificationComponents(guildId, service.key, reminder?.isEnabled ?? true)
-  })
 }
 
 function createBumpSetupEmbed(
@@ -436,6 +413,30 @@ function formatNotificationTarget(guild: BumpRoleDisplayGuild, roleId: string | 
   }
 
   return 'メンションなし (デフォルト)'
+}
+
+function addBumpServiceOption(
+  subcommand: SlashCommandSubcommandBuilder
+): SlashCommandSubcommandBuilder {
+  return subcommand.addStringOption((option) =>
+    option
+      .setName('service')
+      .setDescription('対象サービス')
+      .setRequired(true)
+      .addChoices(...bumpServices.map((service) => ({ name: service.name, value: service.key })))
+  )
+}
+
+function getSelectedBumpServiceKey(
+  interaction: ChatInputCommandInteraction<'cached'>
+): BumpServiceKey {
+  const serviceKey = interaction.options.getString('service', true)
+
+  if (!isBumpServiceKey(serviceKey)) {
+    throw new Error(`Invalid bump service key: ${serviceKey}`)
+  }
+
+  return serviceKey
 }
 
 function formatNextBump(remindAt: string | undefined): string {

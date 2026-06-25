@@ -10,7 +10,6 @@ import {
   type BumpServiceKey
 } from '../bumpServices'
 import type { BumpConfig, BumpReminder, BumpRepository } from '../repositories/bumpRepository'
-import { createBumpNotificationComponents, type BumpMessageComponent } from './bumpComponents'
 
 const defaultEmbedColor = 0x85e7ad
 const historySearchLimit = 100
@@ -42,7 +41,6 @@ export type BumpSendableChannel = {
   send(options: {
     content?: string
     embeds?: EmbedBuilder[]
-    components?: BumpMessageComponent[]
     allowedMentions?: {
       roles?: string[]
       parse?: ('everyone' | 'roles' | 'users')[]
@@ -152,8 +150,12 @@ export class BumpService {
     return deleted
   }
 
-  async toggleReminder(guildId: string, serviceKey: BumpServiceKey): Promise<BumpReminder> {
-    return this.repository.toggleReminder(guildId, serviceKey)
+  async setReminderEnabled(
+    guildId: string,
+    serviceKey: BumpServiceKey,
+    isEnabled: boolean
+  ): Promise<BumpReminder> {
+    return this.repository.setReminderEnabled(guildId, serviceKey, isEnabled)
   }
 
   async setReminderRole(
@@ -395,13 +397,6 @@ export class BumpService {
           isEnabled: input.reminder.isEnabled,
           notificationTarget: formatNotificationTarget(input.reminder.roleId, roleName)
         })
-      ],
-      components: [
-        createBumpNotificationComponents(
-          input.reminder.guildId,
-          input.service.key,
-          input.reminder.isEnabled
-        )
       ]
     })
   }
@@ -427,9 +422,6 @@ export class BumpService {
     await channel.send({
       content: target.content,
       embeds: [createBumpReminderEmbed(service?.name ?? reminder.serviceKey)],
-      components: [
-        createBumpNotificationComponents(reminder.guildId, reminder.serviceKey, reminder.isEnabled)
-      ],
       allowedMentions: target.allowedMentions
     })
     this.logger.info(

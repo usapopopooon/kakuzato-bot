@@ -220,6 +220,7 @@ describe('BumpService message handling', () => {
     )
     expect(send).toHaveBeenCalledTimes(1)
     expect(send.mock.calls[0]?.[0].embeds?.[0]?.toJSON().description).toContain('<@user-1> さんが')
+    expect(send.mock.calls[0]?.[0]).not.toHaveProperty('components')
   })
 
   it('sets a reminder when the bump user is only present as a mention', async () => {
@@ -352,6 +353,7 @@ describe('BumpService reminders', () => {
     const sent = channel.send.mock.calls[0]?.[0] as BumpSendOptions | undefined
     expect(sent?.content).toBeUndefined()
     expect(sent?.allowedMentions).toEqual({ parse: [] })
+    expect(sent).not.toHaveProperty('components')
     expect(repository.clearReminder).toHaveBeenCalled()
   })
 
@@ -380,6 +382,7 @@ describe('BumpService reminders', () => {
     const sent = channel.send.mock.calls[0]?.[0] as BumpSendOptions | undefined
     expect(sent?.content).toBe('<@&role-1>')
     expect(sent?.allowedMentions).toEqual({ roles: ['role-1'], parse: [] })
+    expect(sent).not.toHaveProperty('components')
     expect(repository.clearReminder).toHaveBeenCalled()
   })
 })
@@ -451,9 +454,9 @@ describe('BumpService history sync', () => {
     expect(firstEmbed?.title).toBe('Bump 検知')
     expect(firstEmbed?.description).toContain('次の bump リマインドは')
     expect(firstEmbed?.description).toContain('<@user-1> さんが')
-    expect(sent[0]?.components).toHaveLength(1)
+    expect(sent[0]).not.toHaveProperty('components')
     expect(secondEmbed?.title).toBe('Bump 検知')
     expect(secondEmbed?.description).toContain('次の bump リマインドは')
-    expect(sent[1]?.components).toHaveLength(1)
+    expect(sent[1]).not.toHaveProperty('components')
   })
 })

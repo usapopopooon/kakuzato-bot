@@ -1,7 +1,7 @@
 import type { AppPrismaClient } from '../../platform/database/prisma'
 import type { BotModule } from '../../platform/discord/botModule'
 import type { AppLogger } from '../../platform/logger/logger'
-import { createBumpCommand, createBumpComponentHandler } from './commands/bumpCommand'
+import { createBumpCommand } from './commands/bumpCommand'
 import { createBumpEvents } from './events/bumpEvents'
 import { BumpRepository } from './repositories/bumpRepository'
 import { BumpService } from './services/bumpService'
@@ -18,7 +18,6 @@ export function createBumpModule({ logger, prisma }: BumpModuleDeps): BotModule 
   return {
     name: 'bump',
     commands: [createBumpCommand(service)],
-    componentHandlers: [createBumpComponentHandler(service)],
     events: createBumpEvents(service)
   }
 }
