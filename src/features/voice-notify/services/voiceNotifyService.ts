@@ -1,7 +1,9 @@
 import { escapeMarkdown, type Guild, type GuildMember, type VoiceState } from 'discord.js'
 import type { AppLogger } from '../../../platform/logger/logger'
 import type {
+  VoiceNotifyCategoryConfig,
   VoiceNotifyConfig,
+  VoiceNotifyExclude,
   VoiceNotifyRepository
 } from '../repositories/voiceNotifyRepository'
 
@@ -13,6 +15,11 @@ export type VoiceNotifySendableChannel = {
     content: string
     allowedMentions: { parse: ('everyone' | 'roles' | 'users')[] }
   }): Promise<unknown>
+}
+
+type VoiceNotifyVoiceChannel = {
+  id: string
+  parentId: string | null
 }
 
 export class VoiceNotifyService {
@@ -32,6 +39,14 @@ export class VoiceNotifyService {
     return this.repository.listByGuild(guildId)
   }
 
+  async listCategoryConfigs(guildId: string): Promise<VoiceNotifyCategoryConfig[]> {
+    return this.repository.listCategoriesByGuild(guildId)
+  }
+
+  async listExcludes(guildId: string): Promise<VoiceNotifyExclude[]> {
+    return this.repository.listExcludesByGuild(guildId)
+  }
+
   async setConfig(
     guildId: string,
     voiceChannelId: string,
@@ -40,8 +55,28 @@ export class VoiceNotifyService {
     return this.repository.set(guildId, voiceChannelId, notifyChannelId)
   }
 
+  async setCategoryConfig(
+    guildId: string,
+    categoryId: string,
+    notifyChannelId: string
+  ): Promise<VoiceNotifyCategoryConfig> {
+    return this.repository.setCategory(guildId, categoryId, notifyChannelId)
+  }
+
   async deleteConfig(guildId: string, voiceChannelId: string): Promise<boolean> {
     return this.repository.delete(guildId, voiceChannelId)
+  }
+
+  async deleteCategoryConfig(guildId: string, categoryId: string): Promise<boolean> {
+    return this.repository.deleteCategory(guildId, categoryId)
+  }
+
+  async addExclude(guildId: string, voiceChannelId: string): Promise<VoiceNotifyExclude> {
+    return this.repository.setExclude(guildId, voiceChannelId)
+  }
+
+  async deleteExclude(guildId: string, voiceChannelId: string): Promise<boolean> {
+    return this.repository.deleteExclude(guildId, voiceChannelId)
   }
 
   async deleteByGuild(guildId: string): Promise<number> {
@@ -78,16 +113,26 @@ export class VoiceNotifyService {
     voiceChannelId: string,
     eventType: VoiceNotifyEventType
   ): Promise<boolean> {
-    const configs = await this.repository.listByVoiceChannel(guild.id, voiceChannelId)
+    const voiceConfigs = await this.repository.listByVoiceChannel(guild.id, voiceChannelId)
+    const categoryConfig = await this.findCategoryConfigForVoiceChannel(guild, voiceChannelId)
+    const configsByNotifyChannel = new Map<string, VoiceNotifyConfig | VoiceNotifyCategoryConfig>()
 
-    if (configs.length === 0) {
+    for (const config of voiceConfigs) {
+      configsByNotifyChannel.set(config.notifyChannelId, config)
+    }
+
+    if (categoryConfig && !configsByNotifyChannel.has(categoryConfig.notifyChannelId)) {
+      configsByNotifyChannel.set(categoryConfig.notifyChannelId, categoryConfig)
+    }
+
+    if (configsByNotifyChannel.size === 0) {
       return false
     }
 
     const content = createVoiceNotifyMessage(member, voiceChannelId, eventType)
     let sent = false
 
-    for (const config of configs) {
+    for (const config of configsByNotifyChannel.values()) {
       const channel = await this.fetchSendableChannel(guild, config.notifyChannelId)
 
       if (!channel) {
@@ -122,6 +167,42 @@ export class VoiceNotifyService {
     }
 
     return sent
+  }
+
+  private async findCategoryConfigForVoiceChannel(
+    guild: Guild,
+    voiceChannelId: string
+  ): Promise<VoiceNotifyCategoryConfig | undefined> {
+    const voiceChannel = await this.fetchVoiceChannel(guild, voiceChannelId)
+
+    if (!voiceChannel?.parentId) {
+      return undefined
+    }
+
+    if (await this.repository.isExcluded(guild.id, voiceChannelId)) {
+      return undefined
+    }
+
+    return this.repository.getCategory(guild.id, voiceChannel.parentId)
+  }
+
+  private async fetchVoiceChannel(
+    guild: Guild,
+    channelId: string
+  ): Promise<VoiceNotifyVoiceChannel | undefined> {
+    const cached = guild.channels.cache.get(channelId)
+
+    if (isVoiceNotifyVoiceChannel(cached)) {
+      return cached
+    }
+
+    const fetched = await guild.channels.fetch(channelId).catch(() => null)
+
+    if (isVoiceNotifyVoiceChannel(fetched)) {
+      return fetched
+    }
+
+    return undefined
   }
 
   private async fetchSendableChannel(
@@ -169,4 +250,20 @@ export function isVoiceNotifySendableChannel(
     'send' in channel &&
     typeof (channel as { send?: unknown }).send === 'function'
   )
+}
+
+function isVoiceNotifyVoiceChannel(channel: unknown): channel is VoiceNotifyVoiceChannel {
+  if (
+    typeof channel !== 'object' ||
+    channel === null ||
+    !('id' in channel) ||
+    typeof (channel as { id?: unknown }).id !== 'string' ||
+    !('parentId' in channel)
+  ) {
+    return false
+  }
+
+  const parentId = (channel as { parentId?: unknown }).parentId
+
+  return typeof parentId === 'string' || parentId === null
 }

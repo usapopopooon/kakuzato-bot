@@ -77,6 +77,30 @@ model VoiceNotifyConfig {
   @@index([notifyChannelId])
 }
 
+model VoiceNotifyCategoryConfig {
+  id              Int      @id @default(autoincrement())
+  guildId         String
+  categoryId      String
+  notifyChannelId String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([guildId, categoryId])
+  @@index([guildId])
+  @@index([notifyChannelId])
+}
+
+model VoiceNotifyExclude {
+  id             Int      @id @default(autoincrement())
+  guildId        String
+  voiceChannelId String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([guildId, voiceChannelId])
+  @@index([guildId])
+}
+
 model StickyMessageConfig {
   channelId    String            @id
   guildId      String

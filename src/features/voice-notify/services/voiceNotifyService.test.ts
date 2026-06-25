@@ -1,6 +1,10 @@
 import type { Guild, GuildMember, VoiceState } from 'discord.js'
 import { describe, expect, it, vi } from 'vitest'
-import type { VoiceNotifyConfig } from '../repositories/voiceNotifyRepository'
+import type {
+  VoiceNotifyCategoryConfig,
+  VoiceNotifyConfig,
+  VoiceNotifyExclude
+} from '../repositories/voiceNotifyRepository'
 import { createVoiceNotifyMessage, VoiceNotifyService } from './voiceNotifyService'
 
 function createConfig(voiceChannelId: string, notifyChannelId: string, id = 1): VoiceNotifyConfig {
@@ -14,6 +18,31 @@ function createConfig(voiceChannelId: string, notifyChannelId: string, id = 1): 
   }
 }
 
+function createCategoryConfig(
+  categoryId: string,
+  notifyChannelId: string,
+  id = 1
+): VoiceNotifyCategoryConfig {
+  return {
+    id,
+    guildId: 'guild-1',
+    categoryId,
+    notifyChannelId,
+    createdAt: new Date('2026-06-25T00:00:00.000Z').toISOString(),
+    updatedAt: new Date('2026-06-25T00:00:00.000Z').toISOString()
+  }
+}
+
+function createExclude(voiceChannelId: string, id = 1): VoiceNotifyExclude {
+  return {
+    id,
+    guildId: 'guild-1',
+    voiceChannelId,
+    createdAt: new Date('2026-06-25T00:00:00.000Z').toISOString(),
+    updatedAt: new Date('2026-06-25T00:00:00.000Z').toISOString()
+  }
+}
+
 function createGuild(channels: Map<string, unknown>): Guild {
   return {
     id: 'guild-1',
@@ -22,6 +51,13 @@ function createGuild(channels: Map<string, unknown>): Guild {
       fetch: vi.fn((channelId: string) => Promise.resolve(channels.get(channelId) ?? null))
     }
   } as unknown as Guild
+}
+
+function createVoiceChannel(id: string, parentId: string | null): unknown {
+  return {
+    id,
+    parentId
+  }
 }
 
 function createMember(displayName = 'ほげほげ', bot = false): GuildMember {
@@ -45,7 +81,11 @@ function createState(
   } as unknown as VoiceState
 }
 
-function createService(configs: VoiceNotifyConfig[]) {
+function createService(
+  configs: VoiceNotifyConfig[],
+  categoryConfigs: VoiceNotifyCategoryConfig[] = [],
+  excludes: VoiceNotifyExclude[] = []
+) {
   const repository = {
     get: vi.fn(),
     listByGuild: vi.fn(),
@@ -54,6 +94,18 @@ function createService(configs: VoiceNotifyConfig[]) {
     ),
     set: vi.fn(),
     delete: vi.fn(),
+    getCategory: vi.fn((_guildId: string, categoryId: string) =>
+      Promise.resolve(categoryConfigs.find((config) => config.categoryId === categoryId))
+    ),
+    listCategoriesByGuild: vi.fn().mockResolvedValue(categoryConfigs),
+    setCategory: vi.fn(),
+    deleteCategory: vi.fn(),
+    listExcludesByGuild: vi.fn().mockResolvedValue(excludes),
+    isExcluded: vi.fn((_guildId: string, voiceChannelId: string) =>
+      Promise.resolve(excludes.some((exclude) => exclude.voiceChannelId === voiceChannelId))
+    ),
+    setExclude: vi.fn(),
+    deleteExclude: vi.fn(),
     deleteByGuild: vi.fn(),
     deleteByChannel: vi.fn()
   }
@@ -84,6 +136,100 @@ describe('VoiceNotifyService', () => {
       content: 'ほげほげ さんが <#voice-1> に入室しました。',
       allowedMentions: { parse: [] }
     })
+  })
+
+  it('sends a join notification for a voice channel in a watched category', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    const guild = createGuild(
+      new Map([
+        ['voice-1', createVoiceChannel('voice-1', 'category-1')],
+        ['notify-1', { id: 'notify-1', send }]
+      ])
+    )
+    const member = createMember()
+    const { service } = createService([], [createCategoryConfig('category-1', 'notify-1')])
+
+    await service.handleVoiceStateUpdate(
+      createState(guild, null, null),
+      createState(guild, 'voice-1', member)
+    )
+
+    expect(send).toHaveBeenCalledWith({
+      content: 'ほげほげ さんが <#voice-1> に入室しました。',
+      allowedMentions: { parse: [] }
+    })
+  })
+
+  it('does not send a category notification for an excluded voice channel', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    const guild = createGuild(
+      new Map([
+        ['voice-1', createVoiceChannel('voice-1', 'category-1')],
+        ['notify-1', { id: 'notify-1', send }]
+      ])
+    )
+    const member = createMember()
+    const { service } = createService(
+      [],
+      [createCategoryConfig('category-1', 'notify-1')],
+      [createExclude('voice-1')]
+    )
+
+    await service.handleVoiceStateUpdate(
+      createState(guild, null, null),
+      createState(guild, 'voice-1', member)
+    )
+
+    expect(send).not.toHaveBeenCalled()
+  })
+
+  it('keeps direct voice notifications even when the voice channel is excluded from category notifications', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    const guild = createGuild(
+      new Map([
+        ['voice-1', createVoiceChannel('voice-1', 'category-1')],
+        ['notify-1', { id: 'notify-1', send }]
+      ])
+    )
+    const member = createMember()
+    const { service } = createService(
+      [createConfig('voice-1', 'notify-1')],
+      [createCategoryConfig('category-1', 'notify-1')],
+      [createExclude('voice-1')]
+    )
+
+    await service.handleVoiceStateUpdate(
+      createState(guild, null, null),
+      createState(guild, 'voice-1', member)
+    )
+
+    expect(send).toHaveBeenCalledTimes(1)
+    expect(send).toHaveBeenCalledWith({
+      content: 'ほげほげ さんが <#voice-1> に入室しました。',
+      allowedMentions: { parse: [] }
+    })
+  })
+
+  it('deduplicates direct and category notifications sent to the same notification channel', async () => {
+    const send = vi.fn().mockResolvedValue(undefined)
+    const guild = createGuild(
+      new Map([
+        ['voice-1', createVoiceChannel('voice-1', 'category-1')],
+        ['notify-1', { id: 'notify-1', send }]
+      ])
+    )
+    const member = createMember()
+    const { service } = createService(
+      [createConfig('voice-1', 'notify-1')],
+      [createCategoryConfig('category-1', 'notify-1')]
+    )
+
+    await service.handleVoiceStateUpdate(
+      createState(guild, null, null),
+      createState(guild, 'voice-1', member)
+    )
+
+    expect(send).toHaveBeenCalledTimes(1)
   })
 
   it('sends a simple leave notification for a watched voice channel', async () => {
