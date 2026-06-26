@@ -57,6 +57,19 @@ export type EventLogAuditDetails = {
   reason?: string | null
 }
 
+export type MemberJoinInviteDetails =
+  | {
+      type: 'invite'
+      code: string
+      inviterId?: string
+      inviterTotalUses?: number
+    }
+  | {
+      type: 'vanity'
+      code?: string | null
+      uses?: number
+    }
+
 const colors: Record<EventLogType, number> = {
   message_delete: 0xe74c3c,
   message_edit: 0xe67e22,
@@ -329,7 +342,10 @@ export function createMessageEditedEmbed(
   return embed
 }
 
-export function createMemberJoinedEmbed(member: GuildMember): EmbedBuilder {
+export function createMemberJoinedEmbed(
+  member: GuildMember,
+  inviteDetails?: MemberJoinInviteDetails
+): EmbedBuilder {
   const accountAgeDays = Math.floor((Date.now() - member.user.createdTimestamp) / 86_400_000)
   const embed = createLogEmbed('メンバー参加', 'member_join')
 
@@ -348,9 +364,53 @@ export function createMemberJoinedEmbed(member: GuildMember): EmbedBuilder {
     },
     { name: '現在のメンバー数', value: String(member.guild.memberCount), inline: true }
   )
+  addMemberJoinInviteFields(embed, inviteDetails)
   embed.setThumbnail(member.displayAvatarURL())
 
   return embed
+}
+
+function addMemberJoinInviteFields(
+  embed: EmbedBuilder,
+  inviteDetails: MemberJoinInviteDetails | undefined
+): void {
+  if (!inviteDetails) {
+    return
+  }
+
+  if (inviteDetails.type === 'vanity') {
+    embed.addFields({
+      name: '参加元',
+      value: inviteDetails.code ? `Vanity URL (${inlineCode(inviteDetails.code)})` : 'Vanity URL',
+      inline: true
+    })
+
+    if (typeof inviteDetails.uses === 'number') {
+      embed.addFields({
+        name: 'Vanity URL使用回数',
+        value: String(inviteDetails.uses),
+        inline: true
+      })
+    }
+    return
+  }
+
+  embed.addFields({ name: '招待コード', value: inlineCode(inviteDetails.code), inline: true })
+  embed.addFields({
+    name: '招待作成者',
+    value: inviteDetails.inviterId
+      ? `<@${inviteDetails.inviterId}>\nID: ${inlineCode(inviteDetails.inviterId)}`
+      : '不明',
+    inline: true
+  })
+
+  if (typeof inviteDetails.inviterTotalUses === 'number') {
+    embed.addFields({
+      name: '作成者の招待使用回数',
+      value: String(inviteDetails.inviterTotalUses),
+      inline: true
+    })
+  }
 }
 
 export function createMemberLeftEmbed(member: GuildMember | PartialGuildMember): EmbedBuilder {

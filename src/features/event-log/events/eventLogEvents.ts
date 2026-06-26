@@ -1,4 +1,11 @@
-import { AuditLogEvent, Events, Guild, type GuildBasedChannel } from 'discord.js'
+import {
+  AuditLogEvent,
+  Events,
+  Guild,
+  type GuildBasedChannel,
+  type Invite,
+  type Vanity
+} from 'discord.js'
 import type {
   AnyDiscordEventHandler,
   DiscordEventHandler
@@ -27,18 +34,29 @@ import {
   createThreadEmbed,
   createThreadUpdatedEmbed,
   createVoiceStateEmbed,
-  type EventLogAuditDetails
+  type EventLogAuditDetails,
+  type MemberJoinInviteDetails
 } from '../services/eventLogEmbeds'
 import type { EventLogService } from '../services/eventLogService'
 
 type TargetMatcher = (target: unknown) => boolean
+type InviteCacheEntry = {
+  code: string
+  uses: number
+  inviterId?: string
+}
 
 export function createEventLogEvents(service: EventLogService): AnyDiscordEventHandler[] {
+  const inviteTracker = new InviteTracker()
+
   return [
+    createClientReadyEvent(inviteTracker),
+    createGuildCreateEvent(inviteTracker),
+    createGuildDeleteEvent(inviteTracker),
     createMessageDeleteEvent(service),
     createMessageUpdateEvent(service),
     createMessageBulkDeleteEvent(service),
-    createGuildMemberAddEvent(service),
+    createGuildMemberAddEvent(service, inviteTracker),
     createGuildMemberRemoveEvent(service),
     createGuildMemberUpdateEvent(service),
     createGuildBanAddEvent(service),
@@ -50,8 +68,8 @@ export function createEventLogEvents(service: EventLogService): AnyDiscordEventH
     createRoleDeleteEvent(service),
     createRoleUpdateEvent(service),
     createVoiceStateUpdateEvent(service),
-    createInviteCreateEvent(service),
-    createInviteDeleteEvent(service),
+    createInviteCreateEvent(service, inviteTracker),
+    createInviteDeleteEvent(service, inviteTracker),
     createThreadCreateEvent(service),
     createThreadDeleteEvent(service),
     createThreadUpdateEvent(service),
@@ -60,6 +78,40 @@ export function createEventLogEvents(service: EventLogService): AnyDiscordEventH
     createEmojiDeleteEvent(service),
     createEmojiUpdateEvent(service)
   ]
+}
+
+function createClientReadyEvent(
+  inviteTracker: InviteTracker
+): DiscordEventHandler<typeof Events.ClientReady> {
+  return {
+    name: Events.ClientReady,
+    once: true,
+    execute: async (client) => {
+      await inviteTracker.cacheGuilds(client.guilds.cache.values())
+    }
+  }
+}
+
+function createGuildCreateEvent(
+  inviteTracker: InviteTracker
+): DiscordEventHandler<typeof Events.GuildCreate> {
+  return {
+    name: Events.GuildCreate,
+    execute: async (guild) => {
+      await inviteTracker.cacheGuildInvites(guild)
+    }
+  }
+}
+
+function createGuildDeleteEvent(
+  inviteTracker: InviteTracker
+): DiscordEventHandler<typeof Events.GuildDelete> {
+  return {
+    name: Events.GuildDelete,
+    execute: (guild) => {
+      inviteTracker.forgetGuild(guild.id)
+    }
+  }
 }
 
 function createMessageDeleteEvent(
@@ -126,7 +178,8 @@ function createMessageBulkDeleteEvent(
 }
 
 function createGuildMemberAddEvent(
-  service: EventLogService
+  service: EventLogService,
+  inviteTracker: InviteTracker
 ): DiscordEventHandler<typeof Events.GuildMemberAdd> {
   return {
     name: Events.GuildMemberAdd,
@@ -135,7 +188,9 @@ function createGuildMemberAddEvent(
         return
       }
 
-      await service.send(member.guild, 'member', createMemberJoinedEmbed(member))
+      const inviteDetails = await inviteTracker.detectUsedInvite(member.guild)
+
+      await service.send(member.guild, 'member', createMemberJoinedEmbed(member, inviteDetails))
     }
   }
 }
@@ -399,7 +454,8 @@ function createVoiceStateUpdateEvent(
 }
 
 function createInviteCreateEvent(
-  service: EventLogService
+  service: EventLogService,
+  inviteTracker: InviteTracker
 ): DiscordEventHandler<typeof Events.InviteCreate> {
   return {
     name: Events.InviteCreate,
@@ -408,13 +464,15 @@ function createInviteCreateEvent(
         return
       }
 
+      inviteTracker.setInvite(invite.guild, invite)
       await service.send(invite.guild, 'server', createInviteCreatedEmbed(invite))
     }
   }
 }
 
 function createInviteDeleteEvent(
-  service: EventLogService
+  service: EventLogService,
+  inviteTracker: InviteTracker
 ): DiscordEventHandler<typeof Events.InviteDelete> {
   return {
     name: Events.InviteDelete,
@@ -423,6 +481,7 @@ function createInviteDeleteEvent(
         return
       }
 
+      inviteTracker.deleteInvite(invite.guild, invite.code)
       const audit = await findRecentAuditLogEntry(
         invite.guild,
         AuditLogEvent.InviteDelete,
@@ -585,6 +644,146 @@ function createEmojiUpdateEvent(
 
 function isGuildBasedChannel(channel: unknown): channel is GuildBasedChannel {
   return typeof channel === 'object' && channel !== null && 'guild' in channel
+}
+
+class InviteTracker {
+  private readonly cache = new Map<string, Map<string, InviteCacheEntry>>()
+
+  async cacheGuilds(guilds: Iterable<Guild>): Promise<void> {
+    for (const guild of guilds) {
+      await this.cacheGuildInvites(guild)
+    }
+  }
+
+  async cacheGuildInvites(guild: Guild): Promise<void> {
+    const invites = await fetchGuildInvites(guild)
+
+    if (invites) {
+      this.cache.set(guild.id, createInviteCache(invites.values()))
+    }
+  }
+
+  forgetGuild(guildId: string): void {
+    this.cache.delete(guildId)
+  }
+
+  setInvite(guild: Guild, invite: Invite): void {
+    const guildCache = this.cache.get(guild.id) ?? new Map<string, InviteCacheEntry>()
+    guildCache.set(invite.code, createInviteCacheEntry(invite))
+    this.cache.set(guild.id, guildCache)
+  }
+
+  deleteInvite(guild: Guild, inviteCode: string): void {
+    this.cache.get(guild.id)?.delete(inviteCode)
+  }
+
+  async detectUsedInvite(guild: Guild): Promise<MemberJoinInviteDetails | undefined> {
+    const oldCache = this.cache.get(guild.id) ?? new Map<string, InviteCacheEntry>()
+    const invites = await fetchGuildInvites(guild)
+
+    if (!invites) {
+      return undefined
+    }
+
+    const newCache = createInviteCache(invites.values())
+    const usedInvite =
+      findInviteWithIncreasedUses(oldCache, newCache) ??
+      findInviteMissingAfterJoin(oldCache, newCache)
+
+    this.cache.set(guild.id, newCache)
+
+    if (!usedInvite) {
+      const vanity = await fetchVanityData(guild)
+
+      if (vanity?.code) {
+        return { type: 'vanity', code: vanity.code, uses: vanity.uses }
+      }
+
+      return undefined
+    }
+
+    return {
+      type: 'invite',
+      code: usedInvite.code,
+      inviterId: usedInvite.inviterId,
+      inviterTotalUses: calculateInviterTotalUses(usedInvite, newCache)
+    }
+  }
+}
+
+async function fetchGuildInvites(guild: Guild): Promise<ReadonlyMap<string, Invite> | undefined> {
+  return guild.invites.fetch({ cache: false }).catch(() => undefined)
+}
+
+async function fetchVanityData(guild: Guild): Promise<Vanity | undefined> {
+  return guild.fetchVanityData().catch(() => undefined)
+}
+
+function createInviteCache(invites: Iterable<Invite>): Map<string, InviteCacheEntry> {
+  return new Map(Array.from(invites, (invite) => [invite.code, createInviteCacheEntry(invite)]))
+}
+
+function createInviteCacheEntry(invite: Invite): InviteCacheEntry {
+  return {
+    code: invite.code,
+    uses: invite.uses ?? 0,
+    inviterId: invite.inviter?.id ?? undefined
+  }
+}
+
+function findInviteWithIncreasedUses(
+  oldCache: ReadonlyMap<string, InviteCacheEntry>,
+  newCache: ReadonlyMap<string, InviteCacheEntry>
+): InviteCacheEntry | undefined {
+  let usedInvite: InviteCacheEntry | undefined
+  let largestIncrease = 0
+
+  for (const [code, newInvite] of newCache) {
+    const oldInvite = oldCache.get(code)
+    const increase = oldInvite ? newInvite.uses - oldInvite.uses : 0
+
+    if (increase > largestIncrease) {
+      usedInvite = newInvite
+      largestIncrease = increase
+    }
+  }
+
+  return usedInvite
+}
+
+function findInviteMissingAfterJoin(
+  oldCache: ReadonlyMap<string, InviteCacheEntry>,
+  newCache: ReadonlyMap<string, InviteCacheEntry>
+): InviteCacheEntry | undefined {
+  for (const [code, oldInvite] of oldCache) {
+    if (!newCache.has(code)) {
+      return oldInvite
+    }
+  }
+
+  return undefined
+}
+
+function calculateInviterTotalUses(
+  usedInvite: InviteCacheEntry,
+  newCache: ReadonlyMap<string, InviteCacheEntry>
+): number | undefined {
+  if (!usedInvite.inviterId) {
+    return undefined
+  }
+
+  let totalUses = 0
+  for (const invite of newCache.values()) {
+    if (invite.inviterId === usedInvite.inviterId) {
+      totalUses += invite.uses
+    }
+  }
+
+  if (!newCache.has(usedInvite.code)) {
+    totalUses += usedInvite.uses
+  }
+
+  return totalUses
 }
 
 async function findRecentAuditLogEntry(

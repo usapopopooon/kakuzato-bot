@@ -2,6 +2,7 @@ import { ChannelType, OverwriteType, PermissionFlagsBits } from 'discord.js'
 import { describe, expect, it } from 'vitest'
 import {
   createChannelUpdatedEmbed,
+  createMemberJoinedEmbed,
   createMessageDeletedEmbed,
   createRoleEmbed,
   createRoleUpdatedEmbed,
@@ -82,6 +83,33 @@ describe('eventLogEmbeds', () => {
     expect(overwriteField?.value).toContain('許可: メッセージを送信')
     expect(overwriteField?.value).toContain('拒否: なし')
     expect(overwriteField?.value).not.toContain(PermissionFlagsBits.SendMessages.toString())
+  })
+
+  it('adds invite details to member join embeds', () => {
+    const embed = createMemberJoinedEmbed(
+      {
+        displayAvatarURL: () => 'https://example.com/avatar.png',
+        guild: { memberCount: 42 },
+        joinedTimestamp: Date.parse('2026-06-24T03:00:00.000Z'),
+        user: {
+          createdTimestamp: Date.parse('2026-06-01T00:00:00.000Z'),
+          id: 'user-2',
+          tag: 'new-user#0001',
+          toString: () => '<@user-2>'
+        }
+      } as never,
+      {
+        type: 'invite',
+        code: 'abc123',
+        inviterId: 'user-1',
+        inviterTotalUses: 7
+      }
+    )
+    const fields = embed.toJSON().fields ?? []
+
+    expect(fields.find((field) => field.name === '招待コード')?.value).toBe('`abc123`')
+    expect(fields.find((field) => field.name === '招待作成者')?.value).toContain('<@user-1>')
+    expect(fields.find((field) => field.name === '作成者の招待使用回数')?.value).toBe('7')
   })
 })
 
