@@ -2,7 +2,6 @@ import { EmbedBuilder, type Client, type Guild, type GuildMember, type Message }
 import type { AppLogger } from '../../../platform/logger/logger'
 import {
   bumpReminderCheckIntervalMs,
-  bumpReminderDelayMs,
   bumpServices,
   getBumpServiceByBotId,
   getBumpServiceByKey,
@@ -206,7 +205,7 @@ export class BumpService {
       return
     }
 
-    const remindAt = new Date(Date.now() + bumpReminderDelayMs)
+    const remindAt = new Date(Date.now() + detectedService.reminderDelayMs)
     const reminder = await this.repository.claimBumpDetection(
       guildId,
       message.channel.id,
@@ -257,7 +256,7 @@ export class BumpService {
     const reminders: BumpReminder[] = []
 
     for (const bump of recentBumps.values()) {
-      const remindAt = new Date(bump.createdAt.getTime() + bumpReminderDelayMs)
+      const remindAt = new Date(bump.createdAt.getTime() + bump.service.reminderDelayMs)
       const serviceKey = bump.service.key
 
       if (remindAt <= now) {

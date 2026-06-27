@@ -339,7 +339,7 @@ function createBumpSetupEmbed(
         ...roleStatuses,
         '',
         `監視対象サービス: ${bumpServices.map((service) => service.name).join(', ')}`,
-        'bump 成功を検知し、2時間後にリマインドを送信します。',
+        'bump 成功を検知し、DISBOARD は3時間後、ディス速報は2時間後にリマインドを送信します。',
         '',
         syncMessage
       ].join('\n')
