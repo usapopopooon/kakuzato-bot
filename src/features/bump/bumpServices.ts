@@ -17,7 +17,7 @@ export type BumpServiceDefinition = {
 export const disboardBotId = '302050872383242240'
 export const dissokuBotId = '761562078095867916'
 export const bumpReminderDelayMs = 2 * 60 * 60 * 1_000
-export const disboardReminderDelayMs = 3 * 60 * 60 * 1_000
+export const disboardReminderDelayMs = 5 * 60 * 60 * 1_000
 export const bumpReminderCheckIntervalMs = 30 * 1_000
 
 export const bumpServices = [

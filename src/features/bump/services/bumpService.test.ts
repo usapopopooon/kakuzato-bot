@@ -156,7 +156,7 @@ describe('bump detection', () => {
 describe('BumpService message handling', () => {
   it('sets a reminder for a bump user without requiring a Server Bumper role', async () => {
     const now = new Date('2026-06-24T12:00:00.000Z')
-    const remindAt = new Date('2026-06-24T15:00:00.000Z')
+    const remindAt = new Date('2026-06-24T17:00:00.000Z')
     const dateNow = vi.spyOn(Date, 'now').mockReturnValue(now.getTime())
     const member = {
       id: 'user-1',
