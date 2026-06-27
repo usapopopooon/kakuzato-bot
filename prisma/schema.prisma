@@ -39,6 +39,26 @@ enum AutoModLogStatus {
   FAILED
 }
 
+enum NoteCategoryKind {
+  ACTIVE
+  ARCHIVE
+}
+
+enum NoteChannelStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum NoteVisibility {
+  PUBLIC
+  PRIVATE
+}
+
+enum NoteCommentMode {
+  OPEN
+  LOCKED
+}
+
 model BotActivityConfig {
   id           String   @id @default("global")
   activityName String   @db.VarChar(128)
@@ -183,4 +203,49 @@ model AutoModLog {
   @@index([guildId, createdAt])
   @@index([guildId, userId, createdAt])
   @@index([ruleId])
+}
+
+model NoteConfig {
+  guildId                 String   @id
+  lobbyChannelId          String
+  panelMessageId          String?
+  categoryBaseName        String   @default("ノート") @db.VarChar(64)
+  archiveCategoryBaseName String   @default("ノート Archive") @db.VarChar(64)
+  channelNamePrefix       String   @default("note") @db.VarChar(32)
+  creatorRoleId           String?
+  managerRoleId           String?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+}
+
+model NoteCategory {
+  id         Int              @id @default(autoincrement())
+  guildId    String
+  categoryId String
+  kind       NoteCategoryKind
+  sortOrder  Int
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+
+  @@unique([guildId, categoryId])
+  @@unique([guildId, kind, sortOrder])
+  @@index([guildId, kind])
+}
+
+model NoteChannel {
+  id          Int               @id @default(autoincrement())
+  guildId     String
+  userId      String
+  channelId   String            @unique
+  categoryId  String
+  status      NoteChannelStatus @default(ACTIVE)
+  visibility  NoteVisibility    @default(PUBLIC)
+  commentMode NoteCommentMode   @default(OPEN)
+  archivedAt  DateTime?
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+
+  @@unique([guildId, userId])
+  @@index([guildId, status])
+  @@index([guildId, categoryId])
 }

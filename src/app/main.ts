@@ -15,6 +15,7 @@ import { createLogger } from '../platform/logger/logger'
 import { createAutoModModule } from '../features/automod/autoMod.module'
 import { createBotActivityModule } from '../features/bot-activity/botActivity.module'
 import { createEventLogModule } from '../features/event-log/eventLog.module'
+import { createNoteModule } from '../features/note/note.module'
 import { createStickyModule } from '../features/sticky/sticky.module'
 import { createWelcomeModule } from '../features/welcome/welcome.module'
 import { createVoiceNotifyModule } from '../features/voice-notify/voiceNotify.module'
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
     createAutoModModule({ logger, prisma }),
     createBumpModule({ logger, prisma }),
     createWelcomeModule({ logger, prisma }),
+    createNoteModule({ logger, prisma }),
     createStickyModule({ logger, prisma }),
     createVoiceNotifyModule({ logger, prisma }),
     createEventLogModule({ logger, prisma })
