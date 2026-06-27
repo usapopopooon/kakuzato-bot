@@ -109,6 +109,11 @@ export function createNoteCommand(service: NoteService): DiscordCommand {
           )
       )
       .addSubcommand((subcommand) =>
+        subcommand
+          .setName('sync-permissions')
+          .setDescription('既存ノートのチャンネル権限を現在の設定に同期します')
+      )
+      .addSubcommand((subcommand) =>
         subcommand.setName('status').setDescription('ノート機能の設定を表示します')
       )
       .addSubcommand((subcommand) =>
@@ -166,6 +171,11 @@ async function executeNoteCommand(
 
   if (subcommand === 'refresh-panels') {
     await handleRefreshPanels(interaction, service)
+    return
+  }
+
+  if (subcommand === 'sync-permissions') {
+    await handleSyncPermissions(interaction, service)
     return
   }
 
@@ -283,6 +293,39 @@ async function handleRefreshPanels(
     ].join('\n'),
     allowedMentions: { parse: [] }
   })
+}
+
+async function handleSyncPermissions(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: NoteService
+): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  try {
+    const result = await service.syncChannelPermissions(interaction.guild)
+
+    await interaction.editReply({
+      content: [
+        '既存ノートのチャンネル権限を現在の設定に同期しました。',
+        '@here / @everyone メンション: 無効',
+        `対象ノート: ${result.total}件`,
+        `更新: ${result.updated}件`,
+        `スキップ: ${result.skipped}件`,
+        `失敗: ${result.failed}件`
+      ].join('\n'),
+      allowedMentions: { parse: [] }
+    })
+  } catch (error) {
+    if (error instanceof NoteUserError) {
+      await interaction.editReply({
+        content: error.userMessage,
+        allowedMentions: { parse: [] }
+      })
+      return
+    }
+
+    throw error
+  }
 }
 
 async function handleStatus(

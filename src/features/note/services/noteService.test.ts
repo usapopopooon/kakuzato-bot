@@ -1,4 +1,10 @@
-import { ChannelType, OverwriteType, type Guild, type GuildMember } from 'discord.js'
+import {
+  ChannelType,
+  OverwriteType,
+  PermissionFlagsBits,
+  type Guild,
+  type GuildMember
+} from 'discord.js'
 import { describe, expect, it, vi } from 'vitest'
 import type { NoteChannel, NoteConfig, NoteRepository } from '../repositories/noteRepository'
 import {
@@ -204,6 +210,49 @@ describe('NoteService lobby panel', () => {
     expect(payload.embeds?.[0]?.toJSON().description).toContain('<@user-1>')
     expect(payload.components).toHaveLength(2)
     expect(updateManagementPanelMessage).toHaveBeenCalledWith(note.guildId, note.userId, 'panel-1')
+  })
+
+  it('disables here and everyone mentions when creating a note channel', async () => {
+    const config = { ...createNoteConfig(), managerRoleId: 'manager-1' }
+    const category = { id: 'active-1', type: ChannelType.GuildCategory }
+    const send = vi.fn().mockResolvedValue({ id: 'panel-1' })
+    const createdChannel = {
+      id: 'created-note-1',
+      type: ChannelType.GuildText,
+      send
+    }
+    const channelsCreate = vi.fn().mockResolvedValue(createdChannel)
+    const guild = createGuildForNoteCreation(config, category, channelsCreate)
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue(config),
+      getNoteByUser: vi.fn().mockResolvedValue(undefined),
+      listCategories: vi
+        .fn()
+        .mockResolvedValue([createNoteCategory(config.guildId, category.id, 'active')]),
+      deleteCategory: vi.fn(),
+      createNote: vi.fn().mockResolvedValue(createNoteChannel()),
+      updateManagementPanelMessage: vi.fn()
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+    const member = createMember(config.guildId, 'user-1', guild)
+
+    await expect(service.openOrCreate(member)).resolves.toBe(
+      `ノートを作成しました: <#${createdChannel.id}>`
+    )
+
+    const payload = channelsCreate.mock.calls[0]?.[0] as ChannelCreatePayload | undefined
+    const overwrites = payload?.permissionOverwrites ?? []
+
+    expect(findOverwrite(overwrites, config.guildId)?.deny).toContain(
+      PermissionFlagsBits.MentionEveryone
+    )
+    expect(findOverwrite(overwrites, member.id)?.deny).toContain(
+      PermissionFlagsBits.MentionEveryone
+    )
+    expect(findOverwrite(overwrites, 'bot-1')?.deny).toContain(PermissionFlagsBits.MentionEveryone)
+    expect(findOverwrite(overwrites, config.managerRoleId)?.deny).toContain(
+      PermissionFlagsBits.MentionEveryone
+    )
   })
 
   it('edits stored note management panels during refresh', async () => {
@@ -439,6 +488,76 @@ describe('NoteService lobby panel', () => {
     )
 
     expect(setTopic).toHaveBeenCalledWith(null, `Note topic changed by ${member.user.tag}`)
+  })
+
+  it('syncs existing note channel permissions with here and everyone mentions disabled', async () => {
+    const config = { ...createNoteConfig(), managerRoleId: 'manager-1' }
+    const activeNote = createNoteChannel()
+    const archivedNote = {
+      ...createNoteChannel(),
+      id: 2,
+      userId: 'user-2',
+      channelId: 'channel-2',
+      status: 'archived' as const
+    }
+    const activePermissionEdit = vi.fn().mockResolvedValue(undefined)
+    const archivedPermissionEdit = vi.fn().mockResolvedValue(undefined)
+    const activeChannel = createTextChannel(activeNote.channelId, vi.fn(), activePermissionEdit)
+    const archivedChannel = createTextChannel(
+      archivedNote.channelId,
+      vi.fn(),
+      archivedPermissionEdit
+    )
+    const guild = createGuildForPermissionSync(config.guildId, [activeChannel, archivedChannel])
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue(config),
+      listNotes: vi.fn().mockResolvedValue([activeNote, archivedNote]),
+      deleteNoteByUser: vi.fn()
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+
+    await expect(service.syncChannelPermissions(guild)).resolves.toEqual({
+      total: 2,
+      updated: 2,
+      skipped: 0,
+      failed: 0
+    })
+
+    expect(activePermissionEdit).toHaveBeenCalledWith(
+      guild.roles.everyone,
+      expect.objectContaining({ MentionEveryone: false }),
+      expect.any(Object)
+    )
+    expect(activePermissionEdit).toHaveBeenCalledWith(
+      activeNote.userId,
+      expect.objectContaining({ MentionEveryone: false }),
+      expect.objectContaining({ type: OverwriteType.Member })
+    )
+    expect(activePermissionEdit).toHaveBeenCalledWith(
+      'bot-1',
+      expect.objectContaining({ MentionEveryone: false }),
+      expect.any(Object)
+    )
+    expect(activePermissionEdit).toHaveBeenCalledWith(
+      config.managerRoleId,
+      expect.objectContaining({ MentionEveryone: false }),
+      expect.any(Object)
+    )
+    expect(archivedPermissionEdit).toHaveBeenCalledWith(
+      guild.roles.everyone,
+      expect.objectContaining({ MentionEveryone: false }),
+      expect.any(Object)
+    )
+    expect(archivedPermissionEdit).toHaveBeenCalledWith(
+      archivedNote.userId,
+      expect.objectContaining({ MentionEveryone: false }),
+      expect.objectContaining({ type: OverwriteType.Member })
+    )
+    expect(archivedPermissionEdit).toHaveBeenCalledWith(
+      'bot-1',
+      expect.objectContaining({ MentionEveryone: false }),
+      expect.any(Object)
+    )
   })
 })
 
@@ -736,6 +855,16 @@ type ManagementPanelPayload = {
   components?: unknown[]
 }
 
+type ChannelCreatePayload = {
+  permissionOverwrites?: NotePermissionOverwritePayload[]
+}
+
+type NotePermissionOverwritePayload = {
+  id: string
+  allow?: bigint[]
+  deny?: bigint[]
+}
+
 function createLobbyPanelGuild(config: NoteConfig, messageId = 'message-2') {
   const send = vi.fn().mockResolvedValue({ id: messageId })
   const permissionEdit = vi.fn().mockResolvedValue(undefined)
@@ -795,6 +924,68 @@ function createTextChannel(
       edit: permissionEdit
     }
   }
+}
+
+function createGuildForNoteCreation(
+  config: NoteConfig,
+  category: { id: string; type: ChannelType },
+  channelsCreate: ReturnType<typeof vi.fn>
+): object {
+  return {
+    roles: {
+      everyone: { id: config.guildId }
+    },
+    members: {
+      me: { id: 'bot-1' }
+    },
+    client: {
+      user: { id: 'bot-1' }
+    },
+    channels: {
+      cache: {
+        size: 1,
+        filter: vi.fn(() => ({ size: 0 }))
+      },
+      fetch: vi.fn((channelId?: string) => {
+        if (!channelId) {
+          return Promise.resolve(new Map())
+        }
+
+        return Promise.resolve(channelId === category.id ? category : null)
+      }),
+      create: channelsCreate
+    }
+  }
+}
+
+function createGuildForPermissionSync(
+  guildId: string,
+  channels: { id: string; type: ChannelType }[]
+): Guild {
+  const channelMap = new Map(channels.map((channel) => [channel.id, channel]))
+
+  return {
+    id: guildId,
+    roles: {
+      everyone: { id: guildId }
+    },
+    members: {
+      me: { id: 'bot-1' }
+    },
+    client: {
+      user: { id: 'bot-1' }
+    },
+    channels: {
+      fetch: vi.fn((channelId: string) => Promise.resolve(channelMap.get(channelId) ?? null))
+    }
+  } as unknown as Guild
+}
+
+function findOverwrite(
+  overwrites: NotePermissionOverwritePayload[],
+  id: string | undefined
+): NotePermissionOverwritePayload | undefined {
+  return overwrites.find((overwrite) => overwrite.id === id)
 }
 
 function createTextChannelWithMessages(

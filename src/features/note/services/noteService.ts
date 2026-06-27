@@ -89,6 +89,13 @@ export type NotePanelRefreshOptions = {
   removeMention?: boolean
 }
 
+export type NoteChannelPermissionSyncResult = {
+  total: number
+  updated: number
+  skipped: number
+  failed: number
+}
+
 type PermissionOverwriteData = {
   id: string
   type?: OverwriteType
@@ -244,6 +251,61 @@ export class NoteService {
     }
 
     this.logger.info({ guildId: guild.id, ...result }, 'Refreshed note management panels')
+
+    return result
+  }
+
+  async syncChannelPermissions(guild: Guild): Promise<NoteChannelPermissionSyncResult> {
+    const config = await this.getRequiredConfig(guild.id)
+    const notes = await this.repository.listNotes(guild.id)
+    const result: NoteChannelPermissionSyncResult = {
+      total: notes.length,
+      updated: 0,
+      skipped: 0,
+      failed: 0
+    }
+
+    for (const note of notes) {
+      try {
+        const channel = await this.fetchNoteTextChannel(guild, note)
+
+        if (!channel) {
+          await this.repository.deleteNoteByUser(guild.id, note.userId)
+          result.skipped += 1
+          this.logger.warn(
+            { guildId: guild.id, userId: note.userId, channelId: note.channelId },
+            'Deleted stale note record while syncing note channel permissions'
+          )
+          continue
+        }
+
+        const reason = 'Note channel permissions synced by command'
+
+        if (note.status === 'archived') {
+          await applyArchivedNotePermissions(channel, guild, note.userId, config, reason)
+        } else {
+          await applyActiveNotePermissions(
+            channel,
+            guild,
+            note.userId,
+            config,
+            note.visibility,
+            note.commentMode,
+            reason
+          )
+        }
+
+        result.updated += 1
+      } catch (error) {
+        result.failed += 1
+        this.logger.warn(
+          { error, guildId: guild.id, userId: note.userId, channelId: note.channelId },
+          'Failed to sync note channel permissions'
+        )
+      }
+    }
+
+    this.logger.info({ guildId: guild.id, ...result }, 'Synced note channel permissions')
 
     return result
   }
@@ -1257,7 +1319,8 @@ async function applyLobbyPermissions(guild: Guild, channel: NoteLobbyChannel): P
       CreatePublicThreads: false,
       CreatePrivateThreads: false,
       SendMessagesInThreads: false,
-      AddReactions: false
+      AddReactions: false,
+      MentionEveryone: false
     },
     { reason: 'Note lobby panel setup' }
   )
@@ -1299,7 +1362,11 @@ function createActiveNotePermissionOverwrites(
         PermissionFlagsBits.AttachFiles,
         PermissionFlagsBits.EmbedLinks
       ],
-      deny: [PermissionFlagsBits.CreatePublicThreads, PermissionFlagsBits.CreatePrivateThreads]
+      deny: [
+        PermissionFlagsBits.CreatePublicThreads,
+        PermissionFlagsBits.CreatePrivateThreads,
+        PermissionFlagsBits.MentionEveryone
+      ]
     }
   ]
 
@@ -1405,7 +1472,8 @@ function createEveryoneActiveOverwrite(
         PermissionFlagsBits.CreatePublicThreads,
         PermissionFlagsBits.CreatePrivateThreads,
         PermissionFlagsBits.SendMessagesInThreads,
-        PermissionFlagsBits.AddReactions
+        PermissionFlagsBits.AddReactions,
+        PermissionFlagsBits.MentionEveryone
       ]
     }
   }
@@ -1422,7 +1490,8 @@ function createEveryoneActiveOverwrite(
         PermissionFlagsBits.SendMessages,
         PermissionFlagsBits.CreatePublicThreads,
         PermissionFlagsBits.CreatePrivateThreads,
-        PermissionFlagsBits.SendMessagesInThreads
+        PermissionFlagsBits.SendMessagesInThreads,
+        PermissionFlagsBits.MentionEveryone
       ]
     }
   }
@@ -1438,7 +1507,8 @@ function createEveryoneActiveOverwrite(
     deny: [
       PermissionFlagsBits.CreatePublicThreads,
       PermissionFlagsBits.CreatePrivateThreads,
-      PermissionFlagsBits.SendMessagesInThreads
+      PermissionFlagsBits.SendMessagesInThreads,
+      PermissionFlagsBits.MentionEveryone
     ]
   }
 }
@@ -1460,7 +1530,8 @@ function addBotOverwrite(guild: Guild, overwrites: PermissionOverwriteData[]): v
       PermissionFlagsBits.ReadMessageHistory,
       PermissionFlagsBits.AddReactions,
       PermissionFlagsBits.EmbedLinks
-    ]
+    ],
+    deny: [PermissionFlagsBits.MentionEveryone]
   })
 }
 
@@ -1480,7 +1551,8 @@ function addManagerRoleOverwrite(
       PermissionFlagsBits.ReadMessageHistory,
       PermissionFlagsBits.ManageMessages,
       ...(canSend ? [PermissionFlagsBits.SendMessages] : [])
-    ]
+    ],
+    deny: [PermissionFlagsBits.MentionEveryone]
   })
 }
 
@@ -1509,7 +1581,8 @@ async function applyActiveNotePermissions(
         AttachFiles: true,
         EmbedLinks: true,
         CreatePublicThreads: false,
-        CreatePrivateThreads: false
+        CreatePrivateThreads: false,
+        MentionEveryone: false
       },
       { reason, type: OverwriteType.Member }
     )
@@ -1528,7 +1601,8 @@ async function applyActiveNotePermissions(
           ManageMessages: true,
           ReadMessageHistory: true,
           AddReactions: true,
-          EmbedLinks: true
+          EmbedLinks: true,
+          MentionEveryone: false
         },
         { reason }
       )
@@ -1543,7 +1617,8 @@ async function applyActiveNotePermissions(
           ViewChannel: true,
           SendMessages: true,
           ManageMessages: true,
-          ReadMessageHistory: true
+          ReadMessageHistory: true,
+          MentionEveryone: false
         },
         { reason }
       )
@@ -1569,7 +1644,8 @@ async function applyArchivedNotePermissions(
         CreatePublicThreads: false,
         CreatePrivateThreads: false,
         SendMessagesInThreads: false,
-        AddReactions: false
+        AddReactions: false,
+        MentionEveryone: false
       },
       { reason }
     ),
@@ -1577,7 +1653,8 @@ async function applyArchivedNotePermissions(
       ownerId,
       {
         ViewChannel: false,
-        SendMessages: false
+        SendMessages: false,
+        MentionEveryone: false
       },
       { reason, type: OverwriteType.Member }
     )
@@ -1596,7 +1673,8 @@ async function applyArchivedNotePermissions(
           ManageMessages: true,
           ReadMessageHistory: true,
           AddReactions: true,
-          EmbedLinks: true
+          EmbedLinks: true,
+          MentionEveryone: false
         },
         { reason }
       )
@@ -1611,7 +1689,8 @@ async function applyArchivedNotePermissions(
           ViewChannel: true,
           SendMessages: true,
           ManageMessages: true,
-          ReadMessageHistory: true
+          ReadMessageHistory: true,
+          MentionEveryone: false
         },
         { reason }
       )
@@ -1632,7 +1711,8 @@ function createEveryoneActivePermissionOptions(
       CreatePublicThreads: false,
       CreatePrivateThreads: false,
       SendMessagesInThreads: false,
-      AddReactions: false
+      AddReactions: false,
+      MentionEveryone: false
     }
   }
 
@@ -1644,7 +1724,8 @@ function createEveryoneActivePermissionOptions(
       SendMessages: false,
       CreatePublicThreads: false,
       CreatePrivateThreads: false,
-      SendMessagesInThreads: false
+      SendMessagesInThreads: false,
+      MentionEveryone: false
     }
   }
 
@@ -1655,7 +1736,8 @@ function createEveryoneActivePermissionOptions(
     AddReactions: true,
     CreatePublicThreads: false,
     CreatePrivateThreads: false,
-    SendMessagesInThreads: false
+    SendMessagesInThreads: false,
+    MentionEveryone: false
   }
 }
 

@@ -1,12 +1,65 @@
 import {
   MessageFlags,
+  PermissionFlagsBits,
+  type ChatInputCommandInteraction,
   type MessageComponentInteraction,
   type ModalBuilder,
   type ModalSubmitInteraction
 } from 'discord.js'
 import { describe, expect, it, vi } from 'vitest'
 import { noteCloseCustomId, noteEditTopicCustomId, type NoteService } from '../services/noteService'
-import { createNoteComponentHandler, createNoteModalSubmitHandler } from './noteCommand'
+import {
+  createNoteCommand,
+  createNoteComponentHandler,
+  createNoteModalSubmitHandler
+} from './noteCommand'
+
+describe('note command handler', () => {
+  it('syncs existing note channel permissions from the sync-permissions subcommand', async () => {
+    const guild = { id: 'guild-1' }
+    const syncChannelPermissions = vi.fn().mockResolvedValue({
+      total: 2,
+      updated: 2,
+      skipped: 0,
+      failed: 0
+    })
+    const service = {
+      syncChannelPermissions
+    } as unknown as NoteService
+    const deferReply = vi.fn().mockResolvedValue(undefined)
+    const editReply = vi.fn().mockResolvedValue(undefined)
+    const hasPermission = vi.fn().mockReturnValue(true)
+    const command = createNoteCommand(service)
+
+    await command.execute({
+      inCachedGuild: () => true,
+      memberPermissions: {
+        has: hasPermission
+      },
+      options: {
+        getSubcommand: vi.fn().mockReturnValue('sync-permissions')
+      },
+      guild,
+      deferReply,
+      editReply
+    } as unknown as ChatInputCommandInteraction)
+
+    expect(hasPermission).toHaveBeenCalledWith(PermissionFlagsBits.Administrator)
+    expect(syncChannelPermissions).toHaveBeenCalledWith(guild)
+    expect(deferReply).toHaveBeenCalledWith({ flags: MessageFlags.Ephemeral })
+    expect(editReply).toHaveBeenCalledWith({
+      content: [
+        '既存ノートのチャンネル権限を現在の設定に同期しました。',
+        '@here / @everyone メンション: 無効',
+        '対象ノート: 2件',
+        '更新: 2件',
+        'スキップ: 0件',
+        '失敗: 0件'
+      ].join('\n'),
+      allowedMentions: { parse: [] }
+    })
+  })
+})
 
 describe('note component handler', () => {
   it('passes the source channel to close note controls', async () => {
