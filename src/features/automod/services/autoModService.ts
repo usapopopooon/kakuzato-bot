@@ -12,7 +12,6 @@ import type {
   AutoModRepository
 } from '../repositories/autoModRepository'
 import type { EmbedBuilder, Guild, GuildMember } from 'discord.js'
-import type { AutoModJoinBlocklist } from './autoModJoinBlocklist'
 
 const defaultTimeoutDurationSeconds = 60 * 60
 
@@ -31,16 +30,10 @@ export type AutoModExecution = {
 export class AutoModService {
   private readonly repository: AutoModRepository
   private readonly logger: AppLogger
-  private readonly joinBlocklist?: AutoModJoinBlocklist
 
-  constructor(
-    repository: AutoModRepository,
-    logger: AppLogger,
-    joinBlocklist?: AutoModJoinBlocklist
-  ) {
+  constructor(repository: AutoModRepository, logger: AppLogger) {
     this.repository = repository
     this.logger = logger
-    this.joinBlocklist = joinBlocklist
   }
 
   async getConfig(guildId: string): Promise<AutoModConfig | undefined> {
@@ -151,10 +144,6 @@ export class AutoModService {
         'Failed to apply AutoMod action'
       )
       return undefined
-    }
-
-    if (shouldBlockWelcome(actionTaken)) {
-      this.joinBlocklist?.markBlocked(member.guild.id, member.id)
     }
 
     const succeededLog = await this.repository.markLogSucceeded(log.id)
@@ -276,10 +265,6 @@ function toActionTaken(action: AutoModAction): AutoModActionTaken {
   }
 
   return AutoModActionTaken.TIMED_OUT
-}
-
-function shouldBlockWelcome(actionTaken: AutoModActionTaken): boolean {
-  return actionTaken === AutoModActionTaken.BANNED || actionTaken === AutoModActionTaken.KICKED
 }
 
 async function applyAction(member: GuildMember, rule: AutoModRule, reason: string): Promise<void> {

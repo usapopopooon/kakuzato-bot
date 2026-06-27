@@ -1,27 +1,24 @@
 import { describe, expect, it, vi } from 'vitest'
-import { AutoModJoinBlocklist } from '../../automod/services/autoModJoinBlocklist'
 import type { WelcomeService } from '../services/welcomeService'
 import { handleGuildMemberAdd } from './guildMemberAdd'
 
 describe('welcome guildMemberAdd event', () => {
-  it('does not send welcome when AutoMod blocked the joined member', async () => {
+  it('sends welcome for joined members independently of other features', async () => {
     const welcomeService = {
-      send: vi.fn()
+      send: vi.fn().mockResolvedValue(true)
     }
-    const joinBlocklist = new AutoModJoinBlocklist()
-    joinBlocklist.markBlocked('guild-1', 'user-1')
+    const member = {
+      id: 'user-1',
+      guild: { id: 'guild-1' }
+    }
 
     await handleGuildMemberAdd(
+      member as never,
       {
-        id: 'user-1',
-        guild: { id: 'guild-1' }
-      } as never,
-      {
-        welcomeService: welcomeService as unknown as WelcomeService,
-        joinBlocklist
+        welcomeService: welcomeService as unknown as WelcomeService
       }
     )
 
-    expect(welcomeService.send).not.toHaveBeenCalled()
+    expect(welcomeService.send).toHaveBeenCalledWith(member)
   })
 })

@@ -7,7 +7,6 @@ import {
   type AutoModRule
 } from '../repositories/autoModRepository'
 import type { AutoModRepository } from '../repositories/autoModRepository'
-import { AutoModJoinBlocklist } from './autoModJoinBlocklist'
 import { AutoModService, evaluateRule } from './autoModService'
 
 const now = new Date('2026-06-24T00:00:00.000Z')
@@ -99,23 +98,6 @@ describe('AutoModService', () => {
     expect(repository.markLogFailed).toHaveBeenCalledWith(1, 'Missing Permissions')
     expect(repository.markLogSucceeded).not.toHaveBeenCalled()
     expect(channel.send).not.toHaveBeenCalled()
-  })
-
-  it('marks BAN and KICK actions as welcome-blocked after success', async () => {
-    const blocklist = new AutoModJoinBlocklist()
-    const member = createMember({ avatar: null })
-    const repository = createRepository({
-      rules: [createRule({ ruleType: AutoModRuleType.NO_AVATAR })]
-    })
-    const service = new AutoModService(
-      repository as unknown as AutoModRepository,
-      createLogger(),
-      blocklist
-    )
-
-    await service.handleMemberJoin(member as never)
-
-    expect(blocklist.isBlocked('guild-1', 'user-1')).toBe(true)
   })
 
   it('does not act on bots', async () => {
