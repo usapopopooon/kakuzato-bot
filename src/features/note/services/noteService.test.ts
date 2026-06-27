@@ -8,7 +8,10 @@ import {
   createNoteLobbyActionRows,
   createNoteLobbyPanelContent,
   createNoteLobbyPanelEmbed,
+  defaultNotePanelRefreshHistoryLimit,
   NoteService,
+  normalizeNotePanelRefreshHistoryLimit,
+  noteToggleVisibilityCustomId,
   type NoteLobbyChannel,
   normalizeCustomNoteChannelName
 } from './noteService'
@@ -29,6 +32,14 @@ describe('note service helpers', () => {
 
   it('falls back when the display name has no usable channel name characters', () => {
     expect(createDefaultNoteChannelName('note', '!!!', '1234567890')).toBe('note-567890')
+  })
+
+  it('normalizes note panel refresh history limits', () => {
+    expect(normalizeNotePanelRefreshHistoryLimit(undefined)).toBe(
+      defaultNotePanelRefreshHistoryLimit
+    )
+    expect(normalizeNotePanelRefreshHistoryLimit(0)).toBe(1)
+    expect(normalizeNotePanelRefreshHistoryLimit(1001)).toBe(1000)
   })
 
   it('uses inviting and commentable wording in the lobby panel', () => {
@@ -160,9 +171,11 @@ describe('NoteService lobby panel', () => {
       send
     }
     const fetch = vi.fn().mockResolvedValue(textChannel)
+    const updateManagementPanelMessage = vi.fn()
     const repository = {
       getNoteByUser: vi.fn().mockResolvedValue(note),
-      deleteNoteByUser: vi.fn()
+      deleteNoteByUser: vi.fn(),
+      updateManagementPanelMessage
     } as unknown as NoteRepository
     const service = new NoteService(repository, createLoggerMock())
     const member = createMember(note.guildId, note.userId, {
@@ -182,6 +195,111 @@ describe('NoteService lobby panel', () => {
     expect(payload.embeds?.[0]?.toJSON().title).toBe('ノート操作')
     expect(payload.embeds?.[0]?.toJSON().description).toContain('<@user-1>')
     expect(payload.components).toHaveLength(2)
+    expect(updateManagementPanelMessage).toHaveBeenCalledWith(note.guildId, note.userId, 'panel-1')
+  })
+
+  it('edits stored note management panels during refresh', async () => {
+    const note = { ...createNoteChannel(), managementPanelMessageId: 'old-panel-1' }
+    const edit = vi.fn().mockResolvedValue(undefined)
+    const oldPanel = createManagementPanelMessage(
+      'old-panel-1',
+      [noteToggleVisibilityCustomId],
+      edit
+    )
+    const messagesFetch = vi.fn().mockResolvedValue(oldPanel)
+    const textChannel = createTextChannelWithMessages(note.channelId, messagesFetch, vi.fn())
+    const member = createMember(note.guildId, note.userId, {})
+    const guild = createGuildForPanelRefresh(note, textChannel, member)
+    const updateManagementPanelMessage = vi.fn().mockResolvedValue(note)
+    const repository = {
+      listNotes: vi.fn().mockResolvedValue([note]),
+      deleteNoteByUser: vi.fn(),
+      updateManagementPanelMessage
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+
+    await expect(service.refreshManagementPanels(guild, 50)).resolves.toEqual({
+      total: 1,
+      updated: 1,
+      skipped: 0,
+      failed: 0
+    })
+
+    expect(messagesFetch).toHaveBeenCalledWith('old-panel-1')
+    expect(edit).toHaveBeenCalledTimes(1)
+    const payload = edit.mock.calls[0]?.[0] as ManagementPanelPayload
+    expect(payload.content).toBe('<@user-1>')
+    expect(payload.allowedMentions).toEqual({ users: ['user-1'] })
+    expect(payload.embeds?.[0]?.toJSON().title).toBe('ノート操作')
+    expect(payload.components).toHaveLength(2)
+    expect(updateManagementPanelMessage).toHaveBeenCalledWith(
+      note.guildId,
+      note.userId,
+      'old-panel-1'
+    )
+  })
+
+  it('edits stored note management panels without user mentions when requested', async () => {
+    const note = { ...createNoteChannel(), managementPanelMessageId: 'old-panel-1' }
+    const edit = vi.fn().mockResolvedValue(undefined)
+    const oldPanel = createManagementPanelMessage(
+      'old-panel-1',
+      [noteToggleVisibilityCustomId],
+      edit
+    )
+    const messagesFetch = vi.fn().mockResolvedValue(oldPanel)
+    const textChannel = createTextChannelWithMessages(note.channelId, messagesFetch, vi.fn())
+    const member = createMember(note.guildId, note.userId, {})
+    const guild = createGuildForPanelRefresh(note, textChannel, member)
+    const updateManagementPanelMessage = vi.fn().mockResolvedValue(note)
+    const repository = {
+      listNotes: vi.fn().mockResolvedValue([note]),
+      deleteNoteByUser: vi.fn(),
+      updateManagementPanelMessage
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+
+    await expect(
+      service.refreshManagementPanels(guild, 50, { removeMention: true })
+    ).resolves.toEqual({
+      total: 1,
+      updated: 1,
+      skipped: 0,
+      failed: 0
+    })
+
+    const payload = edit.mock.calls[0]?.[0] as ManagementPanelPayload
+    expect(payload.content).toBe('')
+    expect(payload.allowedMentions).toEqual({ parse: [] })
+    expect(payload.embeds?.[0]?.toJSON().description).not.toContain('<@user-1>')
+    expect(payload.embeds?.[0]?.toJSON().description).toContain('note-owner さんのノートです。')
+  })
+
+  it('skips refresh without posting when no old management panel is found', async () => {
+    const note = createNoteChannel()
+    const send = vi.fn().mockResolvedValue({ id: 'new-panel-1' })
+    const messagesFetch = vi.fn().mockResolvedValue(new Map())
+    const textChannel = createTextChannelWithMessages(note.channelId, messagesFetch, send)
+    const member = createMember(note.guildId, note.userId, {})
+    const guild = createGuildForPanelRefresh(note, textChannel, member)
+    const updateManagementPanelMessage = vi.fn().mockResolvedValue(note)
+    const repository = {
+      listNotes: vi.fn().mockResolvedValue([note]),
+      deleteNoteByUser: vi.fn(),
+      updateManagementPanelMessage
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+
+    await expect(service.refreshManagementPanels(guild, 50)).resolves.toEqual({
+      total: 1,
+      updated: 0,
+      skipped: 1,
+      failed: 0
+    })
+
+    expect(messagesFetch).toHaveBeenCalledWith({ limit: 50, before: undefined, cache: false })
+    expect(send).not.toHaveBeenCalled()
+    expect(updateManagementPanelMessage).not.toHaveBeenCalled()
   })
 
   it('uses the owner note for block operations invoked from the lobby panel', async () => {
@@ -409,9 +527,9 @@ describe('NoteService member leave archive', () => {
     const repository = {
       getConfig: vi.fn().mockResolvedValue(undefined),
       getNoteByUser: vi.fn().mockResolvedValue(note),
-      listCategories: vi.fn().mockResolvedValue([
-        createNoteCategory('guild-1', archiveCategory.id, 'archive')
-      ]),
+      listCategories: vi
+        .fn()
+        .mockResolvedValue([createNoteCategory('guild-1', archiveCategory.id, 'archive')]),
       deleteCategory: vi.fn(),
       deleteNoteByUser: vi.fn(),
       updateNoteState
@@ -445,9 +563,9 @@ describe('NoteService member leave archive', () => {
     const repository = {
       getConfig: vi.fn().mockResolvedValue(config),
       getNoteByUser: vi.fn().mockResolvedValue(note),
-      listCategories: vi.fn().mockResolvedValue([
-        createNoteCategory(config.guildId, archiveCategory.id, 'archive')
-      ]),
+      listCategories: vi
+        .fn()
+        .mockResolvedValue([createNoteCategory(config.guildId, archiveCategory.id, 'archive')]),
       deleteCategory: vi.fn(),
       deleteNoteByUser: vi.fn(),
       updateNoteState
@@ -512,7 +630,7 @@ type LobbyPanelPayload = {
 type ManagementPanelPayload = {
   content?: string
   embeds?: { toJSON(): { description?: string; title?: string } }[]
-  allowedMentions?: { users: string[] }
+  allowedMentions?: { parse: string[] } | { users: string[] }
   components?: unknown[]
 }
 
@@ -577,6 +695,65 @@ function createTextChannel(
   }
 }
 
+function createTextChannelWithMessages(
+  channelId: string,
+  messagesFetch: ReturnType<typeof vi.fn>,
+  send: ReturnType<typeof vi.fn>
+) {
+  return {
+    id: channelId,
+    type: ChannelType.GuildText,
+    send,
+    messages: {
+      fetch: messagesFetch
+    }
+  }
+}
+
+function createManagementPanelMessage(
+  id: string,
+  customIds: string[],
+  edit: ReturnType<typeof vi.fn>
+) {
+  return {
+    id,
+    author: { id: 'bot-1' },
+    content: 'old panel',
+    embeds: [],
+    components: [
+      {
+        components: customIds.map((customId) => ({ customId }))
+      }
+    ],
+    edit
+  }
+}
+
+function createGuildForPanelRefresh(
+  note: NoteChannel,
+  textChannel: { id: string; type: ChannelType },
+  member: GuildMember
+): Guild {
+  const guild = {
+    id: note.guildId,
+    client: {
+      user: { id: 'bot-1' }
+    },
+    channels: {
+      fetch: vi.fn((channelId?: string) =>
+        Promise.resolve(channelId === note.channelId ? textChannel : null)
+      )
+    },
+    members: {
+      fetch: vi.fn((userId: string) => Promise.resolve(userId === note.userId ? member : null))
+    }
+  }
+
+  ;(textChannel as { guild?: unknown }).guild = guild
+
+  return guild as unknown as Guild
+}
+
 function createGuildForArchive(
   guildId: string,
   note: NoteChannel,
@@ -598,8 +775,7 @@ function createGuildForArchive(
       cache: {
         size: 2,
         filter: vi.fn((predicate: (channel: { parentId?: string }) => boolean) => ({
-          size: ([textChannel, archiveCategory] as { parentId?: string }[]).filter(predicate)
-            .length
+          size: ([textChannel, archiveCategory] as { parentId?: string }[]).filter(predicate).length
         }))
       },
       fetch: vi.fn((channelId?: string) => {
@@ -625,6 +801,7 @@ function createGuildForArchive(
 function createMember(guildId: string, userId: string, guildOverrides: object): GuildMember {
   return {
     id: userId,
+    displayName: 'note-owner',
     guild: {
       id: guildId,
       ...guildOverrides

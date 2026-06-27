@@ -34,6 +34,7 @@ export type NoteChannel = {
   userId: string
   channelId: string
   categoryId: string
+  managementPanelMessageId?: string
   status: NoteChannelStatus
   visibility: NoteVisibility
   commentMode: NoteCommentMode
@@ -206,6 +207,18 @@ export class NoteRepository {
     return note ? toNoteChannel(note) : undefined
   }
 
+  async listNotes(guildId: string, status?: NoteChannelStatus): Promise<NoteChannel[]> {
+    const notes = await this.prisma.noteChannel.findMany({
+      where: {
+        guildId,
+        status: status ? toPrismaChannelStatus(status) : undefined
+      },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    return notes.map(toNoteChannel)
+  }
+
   async createNote(input: NoteChannelInput): Promise<NoteChannel> {
     const note = await this.prisma.noteChannel.upsert({
       where: {
@@ -267,6 +280,34 @@ export class NoteRepository {
               : input.archivedAt
                 ? new Date(input.archivedAt)
                 : null
+        }
+      })
+      .catch((error: unknown) => {
+        if (isRecordNotFoundError(error)) {
+          return undefined
+        }
+
+        throw error
+      })
+
+    return note ? toNoteChannel(note) : undefined
+  }
+
+  async updateManagementPanelMessage(
+    guildId: string,
+    userId: string,
+    managementPanelMessageId: string
+  ): Promise<NoteChannel | undefined> {
+    const note = await this.prisma.noteChannel
+      .update({
+        where: {
+          guildId_userId: {
+            guildId,
+            userId
+          }
+        },
+        data: {
+          managementPanelMessageId
         }
       })
       .catch((error: unknown) => {
@@ -381,6 +422,7 @@ function toNoteChannel(note: {
   userId: string
   channelId: string
   categoryId: string
+  managementPanelMessageId: string | null
   status: string
   visibility: string
   commentMode: string
@@ -394,6 +436,7 @@ function toNoteChannel(note: {
     userId: note.userId,
     channelId: note.channelId,
     categoryId: note.categoryId,
+    managementPanelMessageId: note.managementPanelMessageId ?? undefined,
     status: note.status === 'ARCHIVED' ? 'archived' : 'active',
     visibility: note.visibility === 'PRIVATE' ? 'private' : 'public',
     commentMode: note.commentMode === 'LOCKED' ? 'locked' : 'open',

@@ -19,11 +19,14 @@ import type {
 import {
   defaultNoteCategoryBaseName,
   defaultNoteChannelNamePrefix,
+  defaultNotePanelRefreshHistoryLimit,
   createNoteBlockUserActionRows,
   createNoteBlockUserPanelEmbed,
   createNoteUnblockUserPanelEmbed,
   createNoteUnblockUserActionRows,
   isNoteLobbyChannel,
+  maxNotePanelRefreshHistoryLimit,
+  minNotePanelRefreshHistoryLimit,
   noteBlockUserCustomId,
   noteBlockUserSelectCustomId,
   noteCloseCustomId,
@@ -88,6 +91,23 @@ export function createNoteCommand(service: NoteService): DiscordCommand {
         subcommand.setName('repost').setDescription('現在の設定でノート作成パネルを再投稿します')
       )
       .addSubcommand((subcommand) =>
+        subcommand
+          .setName('refresh-panels')
+          .setDescription('既存ノートの操作パネルを現在の形式に更新します')
+          .addIntegerOption((option) =>
+            option
+              .setName('history_limit')
+              .setDescription('各ノートで探す過去メッセージ数')
+              .setMinValue(minNotePanelRefreshHistoryLimit)
+              .setMaxValue(maxNotePanelRefreshHistoryLimit)
+          )
+          .addBooleanOption((option) =>
+            option
+              .setName('remove_mention')
+              .setDescription('置き換える操作パネルからユーザーメンションを消去します')
+          )
+      )
+      .addSubcommand((subcommand) =>
         subcommand.setName('status').setDescription('ノート機能の設定を表示します')
       )
       .addSubcommand((subcommand) =>
@@ -140,6 +160,11 @@ async function executeNoteCommand(
 
   if (subcommand === 'repost') {
     await handleRepost(interaction, service)
+    return
+  }
+
+  if (subcommand === 'refresh-panels') {
+    await handleRefreshPanels(interaction, service)
     return
   }
 
@@ -231,6 +256,32 @@ async function handleRepost(
 
     throw error
   }
+}
+
+async function handleRefreshPanels(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: NoteService
+): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  const historyLimit =
+    interaction.options.getInteger('history_limit') ?? defaultNotePanelRefreshHistoryLimit
+  const removeMention = interaction.options.getBoolean('remove_mention') ?? false
+  const result = await service.refreshManagementPanels(interaction.guild, historyLimit, {
+    removeMention
+  })
+
+  await interaction.editReply({
+    content: [
+      '既存ノートの操作パネルを現在の形式に更新しました。',
+      `メンション: ${removeMention ? '消去' : '維持'}`,
+      `対象ノート: ${result.total}件`,
+      `編集: ${result.updated}件`,
+      `スキップ: ${result.skipped}件`,
+      `失敗: ${result.failed}件`
+    ].join('\n'),
+    allowedMentions: { parse: [] }
+  })
 }
 
 async function handleStatus(

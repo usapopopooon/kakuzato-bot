@@ -10,6 +10,7 @@ import {
   type CategoryChannel,
   type Guild,
   type GuildMember,
+  type Message,
   type NewsChannel,
   type PartialGuildMember,
   type TextChannel
@@ -42,8 +43,21 @@ export const noteUnblockUserSelectCustomId = `${noteComponentCustomIdPrefix}unbl
 export const defaultNoteCategoryBaseName = 'ノート'
 export const defaultNoteChannelNamePrefix = 'note'
 export const noteMaxChannelsPerCategory = 50
+export const minNotePanelRefreshHistoryLimit = 1
+export const maxNotePanelRefreshHistoryLimit = 1000
+export const defaultNotePanelRefreshHistoryLimit = 100
 const notePanelEmbedColor = 0x85e7ad
 const discordUnknownChannelCode = 10003
+const discordUnknownMessageCode = 10008
+const noteManagementPanelCustomIds = new Set([
+  noteRenameCustomId,
+  noteToggleVisibilityCustomId,
+  noteToggleCommentsCustomId,
+  noteCloseCustomId,
+  noteDeleteManagementPanelCustomId,
+  noteBlockUserCustomId,
+  noteUnblockUserCustomId
+])
 
 type NoteSetupInput = {
   guild: Guild
@@ -60,6 +74,17 @@ type NoteStatus = {
   archiveCategories: NoteCategory[]
   activeNotes: number
   archivedNotes: number
+}
+
+export type NotePanelRefreshResult = {
+  total: number
+  updated: number
+  skipped: number
+  failed: number
+}
+
+export type NotePanelRefreshOptions = {
+  removeMention?: boolean
 }
 
 type PermissionOverwriteData = {
@@ -181,9 +206,47 @@ export class NoteService {
     const note = await this.getOwnedActiveNote(member)
     const channel = await this.getRequiredNoteChannel(member.guild, note)
 
-    await this.postManagementPanel(channel, member)
+    const messageId = await this.postManagementPanel(channel, member)
+    await this.repository.updateManagementPanelMessage(member.guild.id, member.id, messageId)
 
     return `操作パネルを再投稿しました: <#${channel.id}>`
+  }
+
+  async refreshManagementPanels(
+    guild: Guild,
+    historyLimit = defaultNotePanelRefreshHistoryLimit,
+    options: NotePanelRefreshOptions = {}
+  ): Promise<NotePanelRefreshResult> {
+    const normalizedHistoryLimit = normalizeNotePanelRefreshHistoryLimit(historyLimit)
+    const notes = await this.repository.listNotes(guild.id, 'active')
+    const result: NotePanelRefreshResult = {
+      total: notes.length,
+      updated: 0,
+      skipped: 0,
+      failed: 0
+    }
+
+    for (const note of notes) {
+      try {
+        const outcome = await this.refreshManagementPanel(
+          guild,
+          note,
+          normalizedHistoryLimit,
+          options
+        )
+        result[outcome] += 1
+      } catch (error) {
+        result.failed += 1
+        this.logger.warn(
+          { error, guildId: guild.id, userId: note.userId, channelId: note.channelId },
+          'Failed to refresh note management panel'
+        )
+      }
+    }
+
+    this.logger.info({ guildId: guild.id, ...result }, 'Refreshed note management panels')
+
+    return result
   }
 
   async ensureCanUseNoteControls(member: GuildMember, channelId: string): Promise<void> {
@@ -527,12 +590,16 @@ export class NoteService {
       throw error
     }
 
-    await this.postManagementPanel(channel, member).catch((error: unknown) => {
-      this.logger.warn(
-        { error, guildId: guild.id, channelId: channel.id },
-        'Failed to send note management panel'
+    await this.postManagementPanel(channel, member)
+      .then((messageId) =>
+        this.repository.updateManagementPanelMessage(guild.id, member.id, messageId)
       )
-    })
+      .catch((error: unknown) => {
+        this.logger.warn(
+          { error, guildId: guild.id, channelId: channel.id },
+          'Failed to send note management panel'
+        )
+      })
 
     this.logger.info(
       { guildId: guild.id, userId: member.id, channelId: channel.id },
@@ -605,11 +672,119 @@ export class NoteService {
     return config
   }
 
-  private async postManagementPanel(channel: TextChannel, member: GuildMember): Promise<void> {
-    await channel.send({
+  private async postManagementPanel(channel: TextChannel, member: GuildMember): Promise<string> {
+    const message = await channel.send({
       content: `<@${member.id}>`,
       embeds: [createNoteManagementPanelEmbed(member)],
       allowedMentions: { users: [member.id] },
+      components: createNoteManagementActionRows()
+    })
+
+    return message.id
+  }
+
+  private async refreshManagementPanel(
+    guild: Guild,
+    note: NoteChannel,
+    historyLimit: number,
+    options: NotePanelRefreshOptions
+  ): Promise<'updated' | 'skipped'> {
+    const [channel, member] = await Promise.all([
+      this.fetchNoteTextChannel(guild, note),
+      guild.members.fetch(note.userId).catch(() => null)
+    ])
+
+    if (!channel) {
+      await this.repository.deleteNoteByUser(guild.id, note.userId)
+      this.logger.warn(
+        { guildId: guild.id, userId: note.userId, channelId: note.channelId },
+        'Deleted stale note record while refreshing management panels'
+      )
+      return 'skipped'
+    }
+
+    if (!member) {
+      this.logger.warn(
+        { guildId: guild.id, userId: note.userId, channelId: note.channelId },
+        'Skipped refreshing note management panel because the owner member was missing'
+      )
+      return 'skipped'
+    }
+
+    const message =
+      (await this.fetchStoredManagementPanelMessage(channel, note)) ??
+      (await this.findManagementPanelMessage(channel, historyLimit, guild.client.user?.id))
+
+    if (!message) {
+      return 'skipped'
+    }
+
+    await this.editManagementPanel(message, member, options)
+    await this.repository.updateManagementPanelMessage(guild.id, note.userId, message.id)
+    return 'updated'
+  }
+
+  private async fetchStoredManagementPanelMessage(
+    channel: TextChannel,
+    note: NoteChannel
+  ): Promise<Message<true> | undefined> {
+    if (!note.managementPanelMessageId) {
+      return undefined
+    }
+
+    const message = await channel.messages.fetch(note.managementPanelMessageId).catch((error) => {
+      if (isDiscordUnknownMessageError(error)) {
+        return undefined
+      }
+
+      throw error
+    })
+
+    return message && isNoteManagementPanelMessage(message, channel.guild.client.user?.id)
+      ? message
+      : undefined
+  }
+
+  private async findManagementPanelMessage(
+    channel: TextChannel,
+    historyLimit: number,
+    botUserId: string | undefined
+  ): Promise<Message<true> | undefined> {
+    let remaining = historyLimit
+    let before: string | undefined
+
+    while (remaining > 0) {
+      const limit = Math.min(100, remaining)
+      const messages = await channel.messages.fetch({ limit, before, cache: false })
+      const batch = [...messages.values()]
+      const found = batch.find((message) => isNoteManagementPanelMessage(message, botUserId))
+
+      if (found) {
+        return found
+      }
+
+      if (batch.length < limit) {
+        return undefined
+      }
+
+      before = batch.at(-1)?.id
+      remaining -= batch.length
+    }
+
+    return undefined
+  }
+
+  private async editManagementPanel(
+    message: Message<true>,
+    member: GuildMember,
+    options: NotePanelRefreshOptions
+  ): Promise<void> {
+    const mentionUser = !options.removeMention
+
+    await message.edit({
+      content: mentionUser ? `<@${member.id}>` : '',
+      embeds: [createNoteManagementPanelEmbed(member, { mentionUser })],
+      allowedMentions: mentionUser ? { users: [member.id] } : { parse: [] },
       components: createNoteManagementActionRows()
     })
   }
@@ -933,11 +1108,14 @@ export function createNoteLobbyPanelEmbed(config?: Pick<NoteConfig, 'creatorRole
     .setDescription(createNoteLobbyPanelContent(config))
 }
 
-export function createNoteManagementPanelEmbed(member: GuildMember): EmbedBuilder {
+export function createNoteManagementPanelEmbed(
+  member: GuildMember,
+  options: { mentionUser?: boolean } = {}
+): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(notePanelEmbedColor)
     .setTitle('ノート操作')
-    .setDescription(createNoteCreatedContent(member))
+    .setDescription(createNoteCreatedContent(member, options))
 }
 
 export function createNoteBlockUserPanelEmbed(): EmbedBuilder {
@@ -954,9 +1132,14 @@ export function createNoteUnblockUserPanelEmbed(): EmbedBuilder {
     .setDescription('このノートでブロック解除するユーザーを選択してください。')
 }
 
-export function createNoteCreatedContent(member: GuildMember): string {
+export function createNoteCreatedContent(
+  member: GuildMember,
+  options: { mentionUser?: boolean } = {}
+): string {
+  const ownerLabel = (options.mentionUser ?? true) ? `<@${member.id}>` : member.displayName
+
   return [
-    `<@${member.id}> さんのノートです。`,
+    `${ownerLabel} さんのノートです。`,
     '',
     '日記、メモ、作業ログなどを自由にどうぞ。',
     '交流しやすいように、作成直後は公開・コメント可になっています。',
@@ -1004,6 +1187,17 @@ export function normalizeCustomNoteChannelName(value: string): string | undefine
     .slice(0, 100)
 
   return normalized.length > 0 ? normalized : undefined
+}
+
+export function normalizeNotePanelRefreshHistoryLimit(value: number | null | undefined): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return defaultNotePanelRefreshHistoryLimit
+  }
+
+  return Math.min(
+    maxNotePanelRefreshHistoryLimit,
+    Math.max(minNotePanelRefreshHistoryLimit, Math.trunc(value))
+  )
 }
 
 function normalizeBaseName(value: string | undefined, fallback: string): string {
@@ -1118,6 +1312,66 @@ function isDiscordUnknownChannelError(error: unknown): boolean {
     'code' in error &&
     (error as { code?: unknown }).code === discordUnknownChannelCode
   )
+}
+
+function isDiscordUnknownMessageError(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === discordUnknownMessageCode
+  )
+}
+
+function isNoteManagementPanelMessage(message: Message<true>, botUserId?: string): boolean {
+  if (botUserId && message.author.id !== botUserId) {
+    return false
+  }
+
+  const customIds = getMessageComponentCustomIds(message)
+
+  if (customIds.some((customId) => noteManagementPanelCustomIds.has(customId))) {
+    return true
+  }
+
+  return (
+    customIds.some((customId) => customId.startsWith(noteComponentCustomIdPrefix)) &&
+    message.embeds.some((embed) => embed.title === 'ノート操作')
+  )
+}
+
+function getMessageComponentCustomIds(message: Pick<Message<true>, 'components'>): string[] {
+  const customIds: string[] = []
+
+  for (const row of message.components) {
+    for (const component of getNestedComponents(row)) {
+      const customId = getComponentCustomId(component)
+
+      if (customId) {
+        customIds.push(customId)
+      }
+    }
+  }
+
+  return customIds
+}
+
+function getNestedComponents(component: unknown): unknown[] {
+  if (typeof component !== 'object' || component === null || !('components' in component)) {
+    return []
+  }
+
+  const { components } = component as { components?: unknown }
+  return Array.isArray(components) ? components : []
+}
+
+function getComponentCustomId(component: unknown): string | undefined {
+  if (typeof component !== 'object' || component === null || !('customId' in component)) {
+    return undefined
+  }
+
+  const { customId } = component as { customId?: unknown }
+  return typeof customId === 'string' ? customId : undefined
 }
 
 function createEveryoneActiveOverwrite(

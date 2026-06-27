@@ -30,6 +30,7 @@ type NoteChannelRow = {
   userId: string
   channelId: string
   categoryId: string
+  managementPanelMessageId: string | null
   status: string
   visibility: string
   commentMode: string
@@ -157,6 +158,19 @@ function createRepository() {
         return null
       }
     ),
+    findMany: vi.fn(
+      ({
+        where
+      }: {
+        where: { guildId: string; status?: string }
+        orderBy: { createdAt: string }
+      }) =>
+        [...notesByUser.values()]
+          .filter(
+            (row) => row.guildId === where.guildId && (!where.status || row.status === where.status)
+          )
+          .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+    ),
     upsert: vi.fn(
       ({
         where,
@@ -172,7 +186,12 @@ function createRepository() {
         const key = `${where.guildId_userId.guildId}:${where.guildId_userId.userId}`
         const current = notesByUser.get(key)
         const row = {
-          ...(current ?? { ...create, id: noteId, createdAt: new Date() }),
+          ...(current ?? {
+            ...create,
+            managementPanelMessageId: null,
+            id: noteId,
+            createdAt: new Date()
+          }),
           ...update,
           updatedAt: new Date()
         }
@@ -311,10 +330,45 @@ describe('NoteRepository', () => {
     await expect(repository.getNoteByUser('guild-1', 'user-1')).resolves.toMatchObject({
       channelId: 'channel-1',
       categoryId: 'archive-1',
+      managementPanelMessageId: undefined,
       status: 'archived',
       visibility: 'private',
       commentMode: 'locked'
     })
+  })
+
+  it('lists notes and stores management panel message ids', async () => {
+    const { repository } = createRepository()
+
+    await repository.createNote({
+      guildId: 'guild-1',
+      userId: 'user-1',
+      channelId: 'channel-1',
+      categoryId: 'category-1',
+      visibility: 'public',
+      commentMode: 'open'
+    })
+    await repository.createNote({
+      guildId: 'guild-1',
+      userId: 'user-2',
+      channelId: 'channel-2',
+      categoryId: 'category-1',
+      visibility: 'public',
+      commentMode: 'open'
+    })
+    await repository.updateNoteState('guild-1', 'user-2', {
+      status: 'archived',
+      archivedAt: new Date().toISOString()
+    })
+    await repository.updateManagementPanelMessage('guild-1', 'user-1', 'panel-1')
+
+    await expect(repository.listNotes('guild-1', 'active')).resolves.toMatchObject([
+      {
+        userId: 'user-1',
+        channelId: 'channel-1',
+        managementPanelMessageId: 'panel-1'
+      }
+    ])
   })
 
   it('counts active and archived notes', async () => {

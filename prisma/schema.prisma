@@ -250,6 +250,7 @@ model NoteChannel {
   userId      String
   channelId   String            @unique
   categoryId  String
+  managementPanelMessageId String?
   status      NoteChannelStatus @default(ACTIVE)
   visibility  NoteVisibility    @default(PUBLIC)
   commentMode NoteCommentMode   @default(OPEN)
