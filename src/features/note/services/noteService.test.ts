@@ -11,6 +11,7 @@ import {
   defaultNotePanelRefreshHistoryLimit,
   NoteService,
   normalizeNotePanelRefreshHistoryLimit,
+  normalizeNoteTopic,
   noteToggleVisibilityCustomId,
   type NoteLobbyChannel,
   normalizeCustomNoteChannelName
@@ -40,6 +41,12 @@ describe('note service helpers', () => {
     )
     expect(normalizeNotePanelRefreshHistoryLimit(0)).toBe(1)
     expect(normalizeNotePanelRefreshHistoryLimit(1001)).toBe(1000)
+  })
+
+  it('normalizes requested note topics', () => {
+    expect(normalizeNoteTopic('  今日の作業ログ  ')).toBe('今日の作業ログ')
+    expect(normalizeNoteTopic('   ')).toBeUndefined()
+    expect(normalizeNoteTopic('a'.repeat(1025))).toHaveLength(1024)
   })
 
   it('uses inviting and commentable wording in the lobby panel', () => {
@@ -97,6 +104,7 @@ describe('note service helpers', () => {
     expect(JSON.stringify(serializedRows)).toContain('ユーザーをブロック')
     expect(JSON.stringify(serializedRows)).toContain('ブロック解除')
     expect(JSON.stringify(serializedRows)).toContain('このパネルを削除')
+    expect(JSON.stringify(serializedRows)).toContain('トピック変更')
     expect(JSON.stringify(serializedRows)).toContain('閉じる')
   })
 
@@ -374,6 +382,63 @@ describe('NoteService lobby panel', () => {
       expect.objectContaining({ ViewChannel: false, SendMessages: false }),
       expect.objectContaining({ reason: `Note user blocked by ${member.user.tag}` })
     )
+  })
+
+  it('updates the owned note channel topic from a management panel', async () => {
+    const config = createNoteConfig()
+    const note = createNoteChannel()
+    const setTopic = vi.fn().mockResolvedValue(undefined)
+    const textChannel = {
+      ...createTextChannel(note.channelId, vi.fn(), vi.fn()),
+      setTopic
+    }
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue(config),
+      getNoteByChannel: vi.fn().mockResolvedValue(note),
+      deleteNoteByUser: vi.fn()
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+    const member = createMember(note.guildId, note.userId, {
+      channels: {
+        fetch: vi.fn().mockResolvedValue(textChannel)
+      }
+    })
+
+    await expect(service.updateTopic(member, note.channelId, '  今日の作業ログ  ')).resolves.toBe(
+      `チャンネルトピックを更新しました: <#${note.channelId}>`
+    )
+
+    expect(setTopic).toHaveBeenCalledWith(
+      '今日の作業ログ',
+      `Note topic changed by ${member.user.tag}`
+    )
+  })
+
+  it('clears the owned note channel topic when the requested topic is blank', async () => {
+    const config = createNoteConfig()
+    const note = createNoteChannel()
+    const setTopic = vi.fn().mockResolvedValue(undefined)
+    const textChannel = {
+      ...createTextChannel(note.channelId, vi.fn(), vi.fn()),
+      setTopic
+    }
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue(config),
+      getNoteByChannel: vi.fn().mockResolvedValue(note),
+      deleteNoteByUser: vi.fn()
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+    const member = createMember(note.guildId, note.userId, {
+      channels: {
+        fetch: vi.fn().mockResolvedValue(textChannel)
+      }
+    })
+
+    await expect(service.updateTopic(member, note.channelId, '   ')).resolves.toBe(
+      `チャンネルトピックを削除しました: <#${note.channelId}>`
+    )
+
+    expect(setTopic).toHaveBeenCalledWith(null, `Note topic changed by ${member.user.tag}`)
   })
 })
 

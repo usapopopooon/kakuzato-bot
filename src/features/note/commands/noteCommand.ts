@@ -32,6 +32,7 @@ import {
   noteCloseCustomId,
   noteComponentCustomIdPrefix,
   noteDeleteManagementPanelCustomId,
+  noteEditTopicCustomId,
   noteOpenCustomId,
   noteRepostManagementPanelCustomId,
   noteRenameCustomId,
@@ -47,6 +48,8 @@ import {
 
 const noteRenameModalCustomId = 'note-modal:rename'
 const noteRenameInputId = 'note-rename-name'
+const noteTopicModalCustomId = 'note-modal:topic'
+const noteTopicInputId = 'note-topic-content'
 
 export function createNoteCommand(service: NoteService): DiscordCommand {
   return {
@@ -67,9 +70,7 @@ export function createNoteCommand(service: NoteService): DiscordCommand {
               .setRequired(true)
           )
           .addRoleOption((option) =>
-            option
-              .setName('creator_role')
-              .setDescription('ノートを作成できるロール')
+            option.setName('creator_role').setDescription('ノートを作成できるロール')
           )
           .addStringOption((option) =>
             option
@@ -358,6 +359,11 @@ async function executeNoteComponent(
     return
   }
 
+  if (interaction.customId === noteEditTopicCustomId) {
+    await handleTopicButton(interaction, service)
+    return
+  }
+
   if (interaction.customId === noteBlockUserCustomId) {
     await handleBlockUserButton(interaction, service)
     return
@@ -429,6 +435,23 @@ async function handleRenameButton(
   try {
     await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
     await interaction.showModal(createNoteRenameModal())
+  } catch (error) {
+    if (error instanceof NoteUserError) {
+      await interaction.reply({ content: error.userMessage, flags: MessageFlags.Ephemeral })
+      return
+    }
+
+    throw error
+  }
+}
+
+async function handleTopicButton(
+  interaction: MessageComponentInteraction<'cached'>,
+  service: NoteService
+): Promise<void> {
+  try {
+    await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
+    await interaction.showModal(createNoteTopicModal())
   } catch (error) {
     if (error instanceof NoteUserError) {
       await interaction.reply({ content: error.userMessage, flags: MessageFlags.Ephemeral })
@@ -552,7 +575,7 @@ async function executeNoteModalSubmit(
   interaction: ModalSubmitInteraction,
   service: NoteService
 ): Promise<void> {
-  if (interaction.customId !== noteRenameModalCustomId) {
+  if (![noteRenameModalCustomId, noteTopicModalCustomId].includes(interaction.customId)) {
     await interaction.reply({
       content: 'ノート操作の入力情報が不正です。',
       flags: MessageFlags.Ephemeral
@@ -571,10 +594,13 @@ async function executeNoteModalSubmit(
   await interaction.deferReply({ flags: MessageFlags.Ephemeral })
 
   try {
-    const content = await service.rename(
-      interaction.member,
-      interaction.fields.getTextInputValue(noteRenameInputId)
-    )
+    const content =
+      interaction.customId === noteRenameModalCustomId
+        ? await service.rename(
+            interaction.member,
+            interaction.fields.getTextInputValue(noteRenameInputId)
+          )
+        : await updateNoteTopicFromModal(interaction, service)
     await interaction.editReply({ content })
   } catch (error) {
     if (error instanceof NoteUserError) {
@@ -584,6 +610,23 @@ async function executeNoteModalSubmit(
 
     throw error
   }
+}
+
+async function updateNoteTopicFromModal(
+  interaction: ModalSubmitInteraction<'cached'>,
+  service: NoteService
+): Promise<string> {
+  if (!interaction.channelId) {
+    throw new NoteUserError(
+      'チャンネルを特定できませんでした。ノート内のパネルから操作してください。'
+    )
+  }
+
+  return service.updateTopic(
+    interaction.member,
+    interaction.channelId,
+    interaction.fields.getTextInputValue(noteTopicInputId)
+  )
 }
 
 function createNoteRenameModal(): ModalBuilder {
@@ -598,6 +641,22 @@ function createNoteRenameModal(): ModalBuilder {
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(100)
+      )
+    )
+}
+
+function createNoteTopicModal(): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(noteTopicModalCustomId)
+    .setTitle('トピックを変更')
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId(noteTopicInputId)
+          .setLabel('新しいチャンネルトピック')
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false)
+          .setMaxLength(1024)
       )
     )
 }

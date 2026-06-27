@@ -30,6 +30,7 @@ export const noteComponentCustomIdPrefix = 'note:'
 export const noteOpenCustomId = `${noteComponentCustomIdPrefix}open`
 export const noteRestoreCustomId = `${noteComponentCustomIdPrefix}restore`
 export const noteRenameCustomId = `${noteComponentCustomIdPrefix}rename`
+export const noteEditTopicCustomId = `${noteComponentCustomIdPrefix}edit-topic`
 export const noteRepostManagementPanelCustomId = `${noteComponentCustomIdPrefix}repost-management-panel`
 export const noteToggleVisibilityCustomId = `${noteComponentCustomIdPrefix}toggle-visibility`
 export const noteToggleCommentsCustomId = `${noteComponentCustomIdPrefix}toggle-comments`
@@ -51,6 +52,7 @@ const discordUnknownChannelCode = 10003
 const discordUnknownMessageCode = 10008
 const noteManagementPanelCustomIds = new Set([
   noteRenameCustomId,
+  noteEditTopicCustomId,
   noteToggleVisibilityCustomId,
   noteToggleCommentsCustomId,
   noteCloseCustomId,
@@ -151,10 +153,7 @@ export class NoteService {
     await applyLobbyPermissions(guild, lobbyChannel)
     const saved = await this.postLobbyPanel(guild, lobbyChannel, config)
 
-    this.logger.info(
-      { guildId: guild.id, lobbyChannelId: lobbyChannel.id },
-      'Reposted note panel'
-    )
+    this.logger.info({ guildId: guild.id, lobbyChannelId: lobbyChannel.id }, 'Reposted note panel')
 
     return saved
   }
@@ -286,6 +285,21 @@ export class NoteService {
 
     await channel.setName(name, `Note renamed by ${member.user.tag}`)
     return `ノート名を <#${channel.id}> に変更しました。`
+  }
+
+  async updateTopic(
+    member: GuildMember,
+    sourceChannelId: string,
+    requestedTopic: string
+  ): Promise<string> {
+    const { channel } = await this.getOwnedActiveNoteForControl(member, sourceChannelId)
+    const topic = normalizeNoteTopic(requestedTopic)
+
+    await channel.setTopic(topic ?? null, `Note topic changed by ${member.user.tag}`)
+
+    return topic
+      ? `チャンネルトピックを更新しました: <#${channel.id}>`
+      : `チャンネルトピックを削除しました: <#${channel.id}>`
   }
 
   async toggleVisibility(member: GuildMember): Promise<string> {
@@ -1027,6 +1041,10 @@ export function createNoteManagementActionRows(): ActionRowBuilder<ButtonBuilder
         .setLabel('名前変更')
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
+        .setCustomId(noteEditTopicCustomId)
+        .setLabel('トピック変更')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
         .setCustomId(noteToggleVisibilityCustomId)
         .setLabel('公開 / 非公開')
         .setStyle(ButtonStyle.Secondary),
@@ -1101,7 +1119,9 @@ export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRo
   return lines.join('\n')
 }
 
-export function createNoteLobbyPanelEmbed(config?: Pick<NoteConfig, 'creatorRoleId'>): EmbedBuilder {
+export function createNoteLobbyPanelEmbed(
+  config?: Pick<NoteConfig, 'creatorRoleId'>
+): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(notePanelEmbedColor)
     .setTitle('ノート')
@@ -1178,6 +1198,11 @@ export function normalizeCustomNoteChannelName(value: string): string | undefine
     .replace(/^-|-$/gu, '')
     .slice(0, 100)
 
+  return normalized.length > 0 ? normalized : undefined
+}
+
+export function normalizeNoteTopic(value: string): string | undefined {
+  const normalized = value.trim().slice(0, 1024)
   return normalized.length > 0 ? normalized : undefined
 }
 
