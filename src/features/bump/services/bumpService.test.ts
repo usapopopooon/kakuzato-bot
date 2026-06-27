@@ -16,13 +16,16 @@ function createMessage(input: BumpMessageLike): BumpMessageLike {
 }
 
 function createReminder(now: Date, overrides: Record<string, unknown> = {}) {
+  const serviceKey = (overrides.serviceKey as BumpServiceKey | undefined) ?? 'DISBOARD'
+
   return {
     id: 1,
     guildId: 'guild-1',
     channelId: 'channel-1',
-    serviceKey: 'DISBOARD',
+    serviceKey,
     remindAt: now.toISOString(),
     isEnabled: true,
+    reminderDelayMinutes: serviceKey === 'DISBOARD' ? 300 : 120,
     createdAt: now.toISOString(),
     updatedAt: now.toISOString(),
     ...overrides
@@ -200,6 +203,7 @@ describe('BumpService message handling', () => {
         createdAt: now.toISOString(),
         updatedAt: now.toISOString()
       }),
+      getReminder: vi.fn().mockResolvedValue(undefined),
       claimBumpDetection: vi
         .fn()
         .mockResolvedValue(createReminder(remindAt, { guildId: 'guild-1', channelId: 'channel-1' }))
@@ -257,6 +261,7 @@ describe('BumpService message handling', () => {
         createdAt: now.toISOString(),
         updatedAt: now.toISOString()
       }),
+      getReminder: vi.fn().mockResolvedValue(undefined),
       claimBumpDetection: vi.fn().mockResolvedValue(
         createReminder(remindAt, {
           guildId: 'guild-1',
@@ -281,6 +286,59 @@ describe('BumpService message handling', () => {
     )
     expect(send.mock.calls[0]?.[0].embeds?.[0]?.toJSON().description).toContain(
       '<@123456789012345678> さんが'
+    )
+  })
+
+  it('uses a configured reminder delay when detecting a bump', async () => {
+    const now = new Date('2026-06-24T12:00:00.000Z')
+    const remindAt = new Date('2026-06-24T13:30:00.000Z')
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(now.getTime())
+    const guild = {
+      id: 'guild-1',
+      roles: {
+        cache: {
+          get: vi.fn()
+        }
+      },
+      members: {
+        cache: new Map(),
+        fetch: vi.fn()
+      }
+    } as unknown as Guild
+    const send = vi.fn<BumpSendableChannel['send']>().mockResolvedValue({})
+    const channel = {
+      id: 'channel-1',
+      send
+    }
+    const message = {
+      author: { id: disboardBotId },
+      channel,
+      embeds: [{ description: 'サーバーの表示順をアップしました！' }],
+      guild
+    } as unknown as Message
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue({
+        guildId: 'guild-1',
+        channelId: 'channel-1',
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString()
+      }),
+      getReminder: vi.fn().mockResolvedValue(createReminder(now, { reminderDelayMinutes: 90 })),
+      claimBumpDetection: vi.fn().mockResolvedValue(createReminder(remindAt))
+    }
+    const service = new BumpService(repository as never, { info: vi.fn(), warn: vi.fn() } as never)
+
+    try {
+      await service.handleMessage(message)
+    } finally {
+      dateNow.mockRestore()
+    }
+
+    expect(repository.claimBumpDetection).toHaveBeenCalledWith(
+      'guild-1',
+      'channel-1',
+      'DISBOARD',
+      remindAt
     )
   })
 })
@@ -436,6 +494,7 @@ describe('BumpService history sync', () => {
       }
     } as unknown as BumpHistoryChannel
     const repository = {
+      listRemindersByGuild: vi.fn().mockResolvedValue([]),
       upsertReminder: vi.fn(
         (guildId: string, channelId: string, serviceKey: BumpServiceKey, remindAt: Date) =>
           Promise.resolve(createReminder(remindAt, { guildId, channelId, serviceKey }))

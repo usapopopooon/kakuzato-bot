@@ -12,6 +12,7 @@ import type { BumpConfig, BumpReminder, BumpRepository } from '../repositories/b
 
 const defaultEmbedColor = 0x85e7ad
 const historySearchLimit = 100
+const millisecondsPerMinute = 60_000
 const reminderRetryDelayMs = 60_000
 const historyBumpActor: BumpDetectionActor = {
   toString: () => '履歴内のユーザー'
@@ -165,6 +166,14 @@ export class BumpService {
     return this.repository.setReminderRole(guildId, serviceKey, roleId)
   }
 
+  async setReminderDelayMinutes(
+    guildId: string,
+    serviceKey: BumpServiceKey,
+    reminderDelayMinutes: number
+  ): Promise<BumpReminder> {
+    return this.repository.setReminderDelayMinutes(guildId, serviceKey, reminderDelayMinutes)
+  }
+
   async handleMessage(message: Message): Promise<void> {
     if (!message.guild) {
       return
@@ -205,7 +214,11 @@ export class BumpService {
       return
     }
 
-    const remindAt = new Date(Date.now() + detectedService.reminderDelayMs)
+    const currentReminder = await this.repository.getReminder(guildId, detectedService.key)
+    const remindAt = new Date(
+      Date.now() +
+        getReminderDelayMinutes(detectedService, currentReminder) * millisecondsPerMinute
+    )
     const reminder = await this.repository.claimBumpDetection(
       guildId,
       message.channel.id,
@@ -254,9 +267,16 @@ export class BumpService {
     const configured: string[] = []
     const skipped: string[] = []
     const reminders: BumpReminder[] = []
+    const currentReminders = await this.repository.listRemindersByGuild(guild.id)
 
     for (const bump of recentBumps.values()) {
-      const remindAt = new Date(bump.createdAt.getTime() + bump.service.reminderDelayMs)
+      const currentReminder = currentReminders.find(
+        (reminder) => reminder.serviceKey === bump.service.key
+      )
+      const remindAt = new Date(
+        bump.createdAt.getTime() +
+          getReminderDelayMinutes(bump.service, currentReminder) * millisecondsPerMinute
+      )
       const serviceKey = bump.service.key
 
       if (remindAt <= now) {
@@ -428,6 +448,13 @@ export class BumpService {
       'Sent bump reminder'
     )
   }
+}
+
+function getReminderDelayMinutes(
+  service: BumpServiceDefinition,
+  reminder: BumpReminder | undefined
+): number {
+  return reminder?.reminderDelayMinutes ?? service.defaultReminderDelayMinutes
 }
 
 export function detectBumpSuccess(message: BumpMessageLike): BumpServiceDefinition | undefined {

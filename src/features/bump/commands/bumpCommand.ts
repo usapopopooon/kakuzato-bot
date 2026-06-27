@@ -11,12 +11,15 @@ import {
   bumpServices,
   getBumpServiceByKey,
   isBumpServiceKey,
+  type BumpServiceDefinition,
   type BumpServiceKey
 } from '../bumpServices'
 import type { BumpConfig, BumpReminder } from '../repositories/bumpRepository'
 import { isBumpHistoryChannel, type BumpService } from '../services/bumpService'
 
 const defaultEmbedColor = 0x85e7ad
+const minReminderDelayMinutes = 1
+const maxReminderDelayMinutes = 24 * 60
 
 type BumpRoleDisplay = {
   name: string
@@ -56,6 +59,18 @@ export function createBumpCommand(service: BumpService): DiscordCommand {
             .setDescription('サービスごとの bump 通知 ON/OFF を設定します')
         ).addBooleanOption((option) =>
           option.setName('enabled').setDescription('通知を有効にするか').setRequired(true)
+        )
+      )
+      .addSubcommand((subcommand) =>
+        addBumpServiceOption(
+          subcommand.setName('delay').setDescription('サービスごとのリマインド時間を設定します')
+        ).addIntegerOption((option) =>
+          option
+            .setName('minutes')
+            .setDescription('bump 成功から通知までの分数')
+            .setRequired(true)
+            .setMinValue(minReminderDelayMinutes)
+            .setMaxValue(maxReminderDelayMinutes)
         )
       )
       .addSubcommand((subcommand) =>
@@ -118,6 +133,11 @@ async function executeBumpCommand(
 
   if (subcommand === 'notify') {
     await handleNotify(interaction, service)
+    return
+  }
+
+  if (subcommand === 'delay') {
+    await handleDelay(interaction, service)
     return
   }
 
@@ -210,6 +230,23 @@ async function handleNotify(
     content: `**${serviceDefinition?.name ?? serviceKey}** の通知を **${
       reminder.isEnabled ? '有効' : '無効'
     }** にしました。`,
+    flags: MessageFlags.Ephemeral
+  })
+}
+
+async function handleDelay(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: BumpService
+): Promise<void> {
+  const serviceKey = getSelectedBumpServiceKey(interaction)
+  const minutes = interaction.options.getInteger('minutes', true)
+  const reminder = await service.setReminderDelayMinutes(interaction.guildId, serviceKey, minutes)
+  const serviceDefinition = getBumpServiceByKey(serviceKey)
+
+  await interaction.reply({
+    content: `**${serviceDefinition?.name ?? serviceKey}** のリマインド時間を **${formatReminderDelay(
+      reminder.reminderDelayMinutes
+    )}** にしました。`,
     flags: MessageFlags.Ephemeral
   })
 }
@@ -328,6 +365,12 @@ function createBumpSetupEmbed(
     const reminder = reminders.find((candidate) => candidate.serviceKey === service.key)
     return `・${service.name}: ${formatNotificationTarget(guild, reminder?.roleId)}`
   })
+  const delayStatuses = bumpServices.map((service) => {
+    const reminder = reminders.find((candidate) => candidate.serviceKey === service.key)
+    return `・${service.name}: ${formatReminderDelay(
+      reminder?.reminderDelayMinutes ?? service.defaultReminderDelayMinutes
+    )}`
+  })
 
   return new EmbedBuilder()
     .setTitle('Bump 監視を開始しました')
@@ -338,8 +381,11 @@ function createBumpSetupEmbed(
         '**通知先:**',
         ...roleStatuses,
         '',
+        '**リマインド時間:**',
+        ...delayStatuses,
+        '',
         `監視対象サービス: ${bumpServices.map((service) => service.name).join(', ')}`,
-        'bump 成功を検知し、DISBOARD は5時間後、ディス速報は2時間後にリマインドを送信します。',
+        'bump 成功を検知し、設定した時間後にリマインドを送信します。',
         '',
         syncMessage
       ].join('\n')
@@ -368,7 +414,7 @@ function createBumpStatusEmbed(
   const serviceStatuses = bumpServices
     .map((service) =>
       formatServiceStatus(
-        service.name,
+        service,
         guild,
         reminders.find((reminder) => reminder.serviceKey === service.key)
       )
@@ -391,18 +437,20 @@ function createBumpStatusEmbed(
 }
 
 function formatServiceStatus(
-  serviceName: string,
+  service: BumpServiceDefinition,
   guild: BumpRoleDisplayGuild,
   reminder: BumpReminder | undefined
 ): string {
   const targetDisplay = formatNotificationTarget(guild, reminder?.roleId)
   const notifyStatus = reminder ? (reminder.isEnabled ? '有効' : '無効') : '有効 (デフォルト)'
   const nextBump = formatNextBump(reminder?.remindAt)
+  const delayMinutes = reminder?.reminderDelayMinutes ?? service.defaultReminderDelayMinutes
 
   return [
-    `・${serviceName}:`,
+    `・${service.name}:`,
     `  通知: **${notifyStatus}**`,
     `  通知先: ${targetDisplay}`,
+    `  リマインド時間: ${formatReminderDelay(delayMinutes)}`,
     `  次回 bump 可能時刻: ${nextBump}`
   ].join('\n')
 }
@@ -413,6 +461,21 @@ function formatNotificationTarget(guild: BumpRoleDisplayGuild, roleId: string | 
   }
 
   return 'メンションなし (デフォルト)'
+}
+
+function formatReminderDelay(minutes: number): string {
+  const hours = Math.floor(minutes / 60)
+  const remainingMinutes = minutes % 60
+
+  if (hours > 0 && remainingMinutes > 0) {
+    return `${hours}時間${remainingMinutes}分`
+  }
+
+  if (hours > 0) {
+    return `${hours}時間`
+  }
+
+  return `${remainingMinutes}分`
 }
 
 function addBumpServiceOption(

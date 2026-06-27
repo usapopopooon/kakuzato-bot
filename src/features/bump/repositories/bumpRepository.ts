@@ -1,5 +1,9 @@
 import type { AppPrismaClient } from '../../../platform/database/prisma'
-import type { BumpServiceKey } from '../bumpServices'
+import {
+  disboardReminderDelayMinutes,
+  defaultBumpReminderDelayMinutes,
+  type BumpServiceKey
+} from '../bumpServices'
 
 export type BumpConfig = {
   guildId: string
@@ -16,6 +20,7 @@ export type BumpReminder = {
   remindAt?: string
   isEnabled: boolean
   roleId?: string
+  reminderDelayMinutes: number
   createdAt: string
   updatedAt: string
 }
@@ -123,6 +128,7 @@ export class BumpRepository {
         guildId,
         channelId,
         serviceKey,
+        reminderDelayMinutes: getDefaultReminderDelayMinutes(serviceKey),
         remindAt
       },
       update: {
@@ -169,6 +175,7 @@ export class BumpRepository {
           guildId,
           channelId,
           serviceKey,
+          reminderDelayMinutes: getDefaultReminderDelayMinutes(serviceKey),
           remindAt
         }
       })
@@ -242,6 +249,7 @@ export class BumpRepository {
       create: {
         guildId,
         serviceKey,
+        reminderDelayMinutes: getDefaultReminderDelayMinutes(serviceKey),
         isEnabled
       },
       update: {
@@ -267,6 +275,7 @@ export class BumpRepository {
       create: {
         guildId,
         serviceKey,
+        reminderDelayMinutes: getDefaultReminderDelayMinutes(serviceKey),
         roleId: roleId ?? null
       },
       update: {
@@ -276,6 +285,60 @@ export class BumpRepository {
 
     return toBumpReminder(reminder)
   }
+
+  async setReminderDelayMinutes(
+    guildId: string,
+    serviceKey: BumpServiceKey,
+    reminderDelayMinutes: number
+  ): Promise<BumpReminder> {
+    const where = {
+      guildId_serviceKey: {
+        guildId,
+        serviceKey
+      }
+    }
+    const currentReminder = await this.prisma.bumpReminder.findUnique({
+      where
+    })
+
+    if (!currentReminder) {
+      const reminder = await this.prisma.bumpReminder.create({
+        data: {
+          guildId,
+          serviceKey,
+          reminderDelayMinutes
+        }
+      })
+
+      return toBumpReminder(reminder)
+    }
+
+    const reminder = await this.prisma.bumpReminder.update({
+      where,
+      data: {
+        reminderDelayMinutes,
+        remindAt: recalculateRemindAt(
+          currentReminder.remindAt,
+          currentReminder.reminderDelayMinutes,
+          reminderDelayMinutes
+        )
+      }
+    })
+
+    return toBumpReminder(reminder)
+  }
+}
+
+function recalculateRemindAt(
+  remindAt: Date | null,
+  currentDelayMinutes: number,
+  nextDelayMinutes: number
+): Date | null {
+  if (!remindAt) {
+    return null
+  }
+
+  return new Date(remindAt.getTime() + (nextDelayMinutes - currentDelayMinutes) * 60 * 1_000)
 }
 
 function toBumpConfig(config: {
@@ -300,6 +363,7 @@ function toBumpReminder(reminder: {
   remindAt: Date | null
   isEnabled: boolean
   roleId: string | null
+  reminderDelayMinutes: number
   createdAt: Date
   updatedAt: Date
 }): BumpReminder {
@@ -311,9 +375,14 @@ function toBumpReminder(reminder: {
     remindAt: reminder.remindAt?.toISOString(),
     isEnabled: reminder.isEnabled,
     roleId: reminder.roleId ?? undefined,
+    reminderDelayMinutes: reminder.reminderDelayMinutes,
     createdAt: reminder.createdAt.toISOString(),
     updatedAt: reminder.updatedAt.toISOString()
   }
+}
+
+export function getDefaultReminderDelayMinutes(serviceKey: BumpServiceKey): number {
+  return serviceKey === 'DISBOARD' ? disboardReminderDelayMinutes : defaultBumpReminderDelayMinutes
 }
 
 function isUniqueConstraintError(error: unknown): boolean {

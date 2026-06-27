@@ -9,6 +9,7 @@ type ReminderRow = {
   remindAt: Date | null
   isEnabled: boolean
   roleId: string | null
+  reminderDelayMinutes: number
   createdAt: Date
   updatedAt: Date
 }
@@ -236,6 +237,8 @@ function createRepository() {
       remindAt: input.remindAt ?? null,
       isEnabled: input.isEnabled ?? true,
       roleId: input.roleId ?? null,
+      reminderDelayMinutes:
+        input.reminderDelayMinutes ?? (input.serviceKey === 'DISBOARD' ? 300 : 120),
       createdAt: new Date(),
       updatedAt: new Date()
     }
@@ -326,6 +329,35 @@ describe('BumpRepository', () => {
     )
     expect(reminders).toHaveLength(1)
     expect(reminders[0]?.isEnabled).toBe(true)
+  })
+
+  it('sets reminder delay minutes explicitly', async () => {
+    const { repository, reminders } = createRepository()
+
+    await expect(
+      repository.setReminderDelayMinutes('guild-1', 'DISBOARD', 287)
+    ).resolves.toMatchObject({
+      reminderDelayMinutes: 287
+    })
+    expect(reminders[0]?.reminderDelayMinutes).toBe(287)
+  })
+
+  it('recalculates a pending reminder when changing delay minutes', async () => {
+    const { repository, reminders } = createRepository()
+    await repository.upsertReminder(
+      'guild-1',
+      'channel-1',
+      'DISBOARD',
+      new Date('2026-06-24T17:00:00.000Z')
+    )
+
+    await expect(
+      repository.setReminderDelayMinutes('guild-1', 'DISBOARD', 240)
+    ).resolves.toMatchObject({
+      reminderDelayMinutes: 240,
+      remindAt: '2026-06-24T16:00:00.000Z'
+    })
+    expect(reminders[0]?.remindAt?.toISOString()).toBe('2026-06-24T16:00:00.000Z')
   })
 })
 

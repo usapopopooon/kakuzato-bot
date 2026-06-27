@@ -78,6 +78,33 @@ describe('bump command', () => {
     })
   })
 
+  it('sets the bump reminder delay from the delay subcommand', async () => {
+    const service = {
+      setReminderDelayMinutes: vi.fn().mockResolvedValue({
+        reminderDelayMinutes: 90
+      })
+    }
+    const reply = vi.fn()
+    const command = createBumpCommand(service as unknown as BumpService)
+
+    await command.execute(
+      createInteraction({
+        subcommand: 'delay',
+        options: {
+          service: 'DISBOARD',
+          minutes: 90
+        },
+        reply
+      })
+    )
+
+    expect(service.setReminderDelayMinutes).toHaveBeenCalledWith('guild-1', 'DISBOARD', 90)
+    expect(reply).toHaveBeenCalledWith({
+      content: '**DISBOARD** のリマインド時間を **1時間30分** にしました。',
+      flags: MessageFlags.Ephemeral
+    })
+  })
+
   it('resets the bump notification role from the role-reset subcommand', async () => {
     const service = {
       setReminderRole: vi.fn().mockResolvedValue({
@@ -110,6 +137,7 @@ function createInteraction(input: {
   options: {
     service?: string
     enabled?: boolean
+    minutes?: number
     role?: { id: string }
   }
   reply: ReturnType<typeof vi.fn>
@@ -131,6 +159,7 @@ function createInteraction(input: {
       getSubcommand: () => input.subcommand,
       getString: () => input.options.service,
       getBoolean: () => input.options.enabled,
+      getInteger: () => input.options.minutes,
       getRole: () => input.options.role
     },
     reply: input.reply

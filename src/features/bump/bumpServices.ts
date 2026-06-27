@@ -5,7 +5,7 @@ export type BumpServiceDefinition = {
   key: BumpServiceKey
   name: BumpServiceName
   botId: string
-  reminderDelayMs: number
+  defaultReminderDelayMinutes: number
   successKeywords: readonly string[]
   failureKeywords: readonly string[]
   checkTitle: boolean
@@ -16,8 +16,8 @@ export type BumpServiceDefinition = {
 
 export const disboardBotId = '302050872383242240'
 export const dissokuBotId = '761562078095867916'
-export const bumpReminderDelayMs = 2 * 60 * 60 * 1_000
-export const disboardReminderDelayMs = 5 * 60 * 60 * 1_000
+export const defaultBumpReminderDelayMinutes = 120
+export const disboardReminderDelayMinutes = 300
 export const bumpReminderCheckIntervalMs = 30 * 1_000
 
 export const bumpServices = [
@@ -25,7 +25,7 @@ export const bumpServices = [
     key: 'DISBOARD',
     name: 'DISBOARD',
     botId: disboardBotId,
-    reminderDelayMs: disboardReminderDelayMs,
+    defaultReminderDelayMinutes: disboardReminderDelayMinutes,
     successKeywords: ['表示順をアップ', 'bump done'],
     failureKeywords: ['please wait', 'already bumped', 'できません', '失敗'],
     checkTitle: true,
@@ -37,7 +37,7 @@ export const bumpServices = [
     key: 'DISSOKU',
     name: 'ディス速報',
     botId: dissokuBotId,
-    reminderDelayMs: bumpReminderDelayMs,
+    defaultReminderDelayMinutes: defaultBumpReminderDelayMinutes,
     successKeywords: ['アップしたよ', 'アップしました', 'upしました', 'upできます'],
     failureKeywords: ['失敗', 'できません', 'できない', '間隔', '待って'],
     checkTitle: true,
