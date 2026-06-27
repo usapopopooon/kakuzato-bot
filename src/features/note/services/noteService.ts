@@ -3,6 +3,7 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ChannelType,
+  EmbedBuilder,
   OverwriteType,
   PermissionFlagsBits,
   UserSelectMenuBuilder,
@@ -39,6 +40,7 @@ export const noteUnblockUserSelectCustomId = `${noteComponentCustomIdPrefix}unbl
 export const defaultNoteCategoryBaseName = 'ノート'
 export const defaultNoteChannelNamePrefix = 'note'
 export const noteMaxChannelsPerCategory = 50
+const noteLobbyPanelEmbedColor = 0x85e7ad
 const discordUnknownChannelCode = 10003
 
 type NoteSetupInput = {
@@ -99,18 +101,35 @@ export class NoteService {
       creatorRoleId: input.creatorRoleId,
       managerRoleId: input.managerRoleId
     })
-    const panelMessage = await input.lobbyChannel.send({
-      content: createNoteLobbyPanelContent(config),
-      components: createNoteLobbyActionRows()
-    })
-    const saved = await this.repository.updatePanelMessage(input.guild.id, panelMessage.id)
+    const saved = await this.postLobbyPanel(input.guild, input.lobbyChannel, config)
 
     this.logger.info(
       { guildId: input.guild.id, lobbyChannelId: input.lobbyChannel.id },
       'Set up note panel'
     )
 
-    return saved ?? config
+    return saved
+  }
+
+  async repostLobbyPanel(guild: Guild): Promise<NoteConfig> {
+    const config = await this.getRequiredConfig(guild.id)
+    const lobbyChannel = await guild.channels.fetch(config.lobbyChannelId).catch(() => null)
+
+    if (!isNoteLobbyChannel(lobbyChannel)) {
+      throw new NoteUserError(
+        '設定済みのロビーチャンネルが見つかりません。/note setup でロビーを設定し直してください。'
+      )
+    }
+
+    await applyLobbyPermissions(guild, lobbyChannel)
+    const saved = await this.postLobbyPanel(guild, lobbyChannel, config)
+
+    this.logger.info(
+      { guildId: guild.id, lobbyChannelId: lobbyChannel.id },
+      'Reposted note panel'
+    )
+
+    return saved
   }
 
   async getStatus(guildId: string): Promise<NoteStatus> {
@@ -562,6 +581,21 @@ export class NoteService {
     return config
   }
 
+  private async postLobbyPanel(
+    guild: Guild,
+    lobbyChannel: NoteLobbyChannel,
+    config: NoteConfig
+  ): Promise<NoteConfig> {
+    const panelMessage = await lobbyChannel.send({
+      embeds: [createNoteLobbyPanelEmbed(config)],
+      allowedMentions: { parse: [] },
+      components: createNoteLobbyActionRows()
+    })
+    const saved = await this.repository.updatePanelMessage(guild.id, panelMessage.id)
+
+    return saved ?? config
+  }
+
   private async getOwnedActiveNote(member: GuildMember): Promise<NoteChannel> {
     const note = await this.repository.getNoteByUser(member.guild.id, member.id)
 
@@ -844,6 +878,13 @@ export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRo
   lines.push('名前変更、非公開化、コメント停止、ブロック、閉じる操作はノート内のパネルから行えます。')
 
   return lines.join('\n')
+}
+
+export function createNoteLobbyPanelEmbed(config?: Pick<NoteConfig, 'creatorRoleId'>): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(noteLobbyPanelEmbedColor)
+    .setTitle('ノート')
+    .setDescription(createNoteLobbyPanelContent(config))
 }
 
 export function createNoteCreatedContent(member: GuildMember): string {

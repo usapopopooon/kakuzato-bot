@@ -1,11 +1,13 @@
-import { ChannelType, OverwriteType, type GuildMember } from 'discord.js'
+import { ChannelType, OverwriteType, type Guild, type GuildMember } from 'discord.js'
 import { describe, expect, it, vi } from 'vitest'
 import type { NoteChannel, NoteConfig, NoteRepository } from '../repositories/noteRepository'
 import {
   createDefaultNoteChannelName,
   createNoteManagementActionRows,
   createNoteLobbyPanelContent,
+  createNoteLobbyPanelEmbed,
   NoteService,
+  type NoteLobbyChannel,
   normalizeCustomNoteChannelName
 } from './noteService'
 
@@ -40,6 +42,14 @@ describe('note service helpers', () => {
     )
   })
 
+  it('renders the lobby panel as an embed', () => {
+    const embed = createNoteLobbyPanelEmbed({ creatorRoleId: 'role-1' }).toJSON()
+
+    expect(embed.title).toBe('ノート')
+    expect(embed.description).toContain('自分のノート')
+    expect(embed.description).toContain('<@&role-1> を持っている人がノートを作れます。')
+  })
+
   it('omits creator role wording in the lobby panel when it is not configured', () => {
     expect(createNoteLobbyPanelContent()).not.toContain('ロール')
   })
@@ -49,6 +59,55 @@ describe('note service helpers', () => {
 
     expect(JSON.stringify(serializedRows)).toContain('ユーザーをブロック')
     expect(JSON.stringify(serializedRows)).toContain('ブロック解除')
+  })
+})
+
+describe('NoteService lobby panel', () => {
+  it('posts the setup panel as an embed without allowed mentions', async () => {
+    const config = { ...createNoteConfig(), creatorRoleId: 'role-1' }
+    const { guild, lobbyChannel, send } = createLobbyPanelGuild(config)
+    const updatePanelMessage = vi.fn().mockResolvedValue({ ...config, panelMessageId: 'message-2' })
+    const repository = {
+      setConfig: vi.fn().mockResolvedValue(config),
+      updatePanelMessage
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+
+    await service.setup({
+      guild,
+      lobbyChannel,
+      creatorRoleId: config.creatorRoleId
+    })
+
+    expect(send).toHaveBeenCalledTimes(1)
+    const payload = send.mock.calls[0]?.[0] as LobbyPanelPayload
+    expect(payload).not.toHaveProperty('content')
+    expect(payload.allowedMentions).toEqual({ parse: [] })
+    expect(payload.components).toHaveLength(1)
+    expect(payload.embeds).toHaveLength(1)
+    expect(payload.embeds?.[0]?.toJSON().description).toContain('<@&role-1>')
+    expect(updatePanelMessage).toHaveBeenCalledWith(config.guildId, 'message-2')
+  })
+
+  it('reposts the lobby panel from stored config', async () => {
+    const config = { ...createNoteConfig(), creatorRoleId: 'role-1' }
+    const savedConfig = { ...config, panelMessageId: 'message-3' }
+    const { guild, send, fetch } = createLobbyPanelGuild(config, 'message-3')
+    const updatePanelMessage = vi.fn().mockResolvedValue(savedConfig)
+    const repository = {
+      getConfig: vi.fn().mockResolvedValue(config),
+      updatePanelMessage
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+
+    await expect(service.repostLobbyPanel(guild)).resolves.toEqual(savedConfig)
+
+    expect(fetch).toHaveBeenCalledWith(config.lobbyChannelId)
+    expect(send).toHaveBeenCalledTimes(1)
+    const payload = send.mock.calls[0]?.[0] as LobbyPanelPayload
+    expect(payload.allowedMentions).toEqual({ parse: [] })
+    expect(payload.embeds?.[0]?.toJSON().description).toContain('<@&role-1>')
+    expect(updatePanelMessage).toHaveBeenCalledWith(config.guildId, 'message-3')
   })
 })
 
@@ -330,6 +389,45 @@ function createNoteChannel(): NoteChannel {
     archivedAt: undefined,
     createdAt: new Date().toISOString(),
     updatedAt: new Date().toISOString()
+  }
+}
+
+type LobbyPanelPayload = {
+  embeds?: { toJSON(): { description?: string; title?: string } }[]
+  allowedMentions?: { parse: string[] }
+  components?: unknown[]
+}
+
+function createLobbyPanelGuild(config: NoteConfig, messageId = 'message-2') {
+  const send = vi.fn().mockResolvedValue({ id: messageId })
+  const permissionEdit = vi.fn().mockResolvedValue(undefined)
+  const lobbyChannel = {
+    id: config.lobbyChannelId,
+    type: ChannelType.GuildText,
+    send,
+    permissionOverwrites: {
+      edit: permissionEdit
+    }
+  }
+  const fetch = vi.fn((channelId: string) =>
+    Promise.resolve(channelId === config.lobbyChannelId ? lobbyChannel : null)
+  )
+  const guild = {
+    id: config.guildId,
+    roles: {
+      everyone: { id: config.guildId }
+    },
+    channels: {
+      fetch
+    }
+  }
+
+  return {
+    guild: guild as unknown as Guild,
+    lobbyChannel: lobbyChannel as unknown as NoteLobbyChannel,
+    send,
+    fetch,
+    permissionEdit
   }
 }
 

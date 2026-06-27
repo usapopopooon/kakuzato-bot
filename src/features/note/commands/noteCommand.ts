@@ -81,6 +81,9 @@ export function createNoteCommand(service: NoteService): DiscordCommand {
           )
       )
       .addSubcommand((subcommand) =>
+        subcommand.setName('repost').setDescription('現在の設定でノート作成パネルを再投稿します')
+      )
+      .addSubcommand((subcommand) =>
         subcommand.setName('status').setDescription('ノート機能の設定を表示します')
       )
       .addSubcommand((subcommand) =>
@@ -128,6 +131,11 @@ async function executeNoteCommand(
 
   if (subcommand === 'setup') {
     await handleSetup(interaction, service)
+    return
+  }
+
+  if (subcommand === 'repost') {
+    await handleRepost(interaction, service)
     return
   }
 
@@ -186,8 +194,39 @@ async function handleSetup(
       `アーカイブ: ${config.archiveCategoryBaseName}`,
       `作成可能ロール: ${config.creatorRoleId ? `<@&${config.creatorRoleId}>` : '未設定'}`,
       `管理ロール: ${config.managerRoleId ? `<@&${config.managerRoleId}>` : '未設定'}`
-    ].join('\n')
+    ].join('\n'),
+    allowedMentions: { parse: [] }
   })
+}
+
+async function handleRepost(
+  interaction: ChatInputCommandInteraction<'cached'>,
+  service: NoteService
+): Promise<void> {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
+
+  try {
+    const config = await service.repostLobbyPanel(interaction.guild)
+
+    await interaction.editReply({
+      content: [
+        'ノート作成パネルを再投稿しました。',
+        `ロビー: <#${config.lobbyChannelId}>`,
+        `パネルメッセージ: ${config.panelMessageId ?? '不明'}`
+      ].join('\n'),
+      allowedMentions: { parse: [] }
+    })
+  } catch (error) {
+    if (error instanceof NoteUserError) {
+      await interaction.editReply({
+        content: error.userMessage,
+        allowedMentions: { parse: [] }
+      })
+      return
+    }
+
+    throw error
+  }
 }
 
 async function handleStatus(
@@ -215,7 +254,8 @@ async function handleStatus(
       `作成可能ロール: ${status.config.creatorRoleId ? `<@&${status.config.creatorRoleId}>` : '未設定'}`,
       `管理ロール: ${status.config.managerRoleId ? `<@&${status.config.managerRoleId}>` : '未設定'}`
     ].join('\n'),
-    flags: MessageFlags.Ephemeral
+    flags: MessageFlags.Ephemeral,
+    allowedMentions: { parse: [] }
   })
 }
 
