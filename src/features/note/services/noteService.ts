@@ -560,7 +560,7 @@ export class NoteService {
       name,
       type: ChannelType.GuildText,
       parent: category.id,
-      topic: `作成者: ${member.displayName} (${member.id}) / ノート`,
+      topic: `作成者: ${member.displayName} / ノート`,
       permissionOverwrites: createActiveNotePermissionOverwrites(
         guild,
         member.id,
@@ -1013,7 +1013,7 @@ export function createNoteLobbyActionRows(): ActionRowBuilder<ButtonBuilder>[] {
         .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(noteRepostManagementPanelCustomId)
-        .setLabel('操作パネルを再投稿')
+        .setLabel('自分の操作パネルを再投稿')
         .setStyle(ButtonStyle.Secondary)
     )
   ]

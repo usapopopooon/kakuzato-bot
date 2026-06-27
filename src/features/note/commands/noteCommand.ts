@@ -104,7 +104,7 @@ export function createNoteCommand(service: NoteService): DiscordCommand {
           .addBooleanOption((option) =>
             option
               .setName('remove_mention')
-              .setDescription('置き換える操作パネルからユーザーメンションを消去します')
+              .setDescription('置き換える操作パネルの通知メンションを消去します')
           )
       )
       .addSubcommand((subcommand) =>
@@ -274,7 +274,7 @@ async function handleRefreshPanels(
   await interaction.editReply({
     content: [
       '既存ノートの操作パネルを現在の形式に更新しました。',
-      `メンション: ${removeMention ? '消去' : '維持'}`,
+      `通知メンション: ${removeMention ? 'なし' : 'あり'}`,
       `対象ノート: ${result.total}件`,
       `編集: ${result.updated}件`,
       `スキップ: ${result.skipped}件`,
@@ -416,7 +416,7 @@ async function executeDeferredNoteButton(
 
   if (interaction.customId === noteCloseCustomId) {
     await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
-    return service.close(interaction.member)
+    return service.close(interaction.member, interaction.channelId)
   }
 
   return '不明なノート操作です。'

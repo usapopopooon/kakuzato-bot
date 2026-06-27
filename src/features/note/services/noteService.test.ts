@@ -73,10 +73,10 @@ describe('note service helpers', () => {
     expect(content).not.toContain('ロビーのボタンでできること')
   })
 
-  it('uses a concise label for reposting the management panel', () => {
+  it('uses an owner-scoped label for reposting the management panel', () => {
     const serializedRows = createNoteLobbyActionRows().map((row) => row.toJSON())
 
-    expect(JSON.stringify(serializedRows)).toContain('操作パネルを再投稿')
+    expect(JSON.stringify(serializedRows)).toContain('自分の操作パネルを再投稿')
   })
 
   it('renders the lobby panel as an embed', () => {
@@ -236,6 +236,44 @@ describe('NoteService lobby panel', () => {
       note.guildId,
       note.userId,
       'old-panel-1'
+    )
+  })
+
+  it('edits note management panels found in message history during refresh', async () => {
+    const note = createNoteChannel()
+    const edit = vi.fn().mockResolvedValue(undefined)
+    const oldPanel = createManagementPanelMessage(
+      'history-panel-1',
+      [noteToggleVisibilityCustomId],
+      edit
+    )
+    const messagesFetch = vi.fn().mockResolvedValue(new Map([['history-panel-1', oldPanel]]))
+    const send = vi.fn()
+    const textChannel = createTextChannelWithMessages(note.channelId, messagesFetch, send)
+    const member = createMember(note.guildId, note.userId, {})
+    const guild = createGuildForPanelRefresh(note, textChannel, member)
+    const updateManagementPanelMessage = vi.fn().mockResolvedValue(note)
+    const repository = {
+      listNotes: vi.fn().mockResolvedValue([note]),
+      deleteNoteByUser: vi.fn(),
+      updateManagementPanelMessage
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+
+    await expect(service.refreshManagementPanels(guild, 50)).resolves.toEqual({
+      total: 1,
+      updated: 1,
+      skipped: 0,
+      failed: 0
+    })
+
+    expect(messagesFetch).toHaveBeenCalledWith({ limit: 50, before: undefined, cache: false })
+    expect(edit).toHaveBeenCalledTimes(1)
+    expect(send).not.toHaveBeenCalled()
+    expect(updateManagementPanelMessage).toHaveBeenCalledWith(
+      note.guildId,
+      note.userId,
+      'history-panel-1'
     )
   })
 
