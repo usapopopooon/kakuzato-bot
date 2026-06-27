@@ -176,13 +176,11 @@ export class NoteService {
     return this.createNote(member.guild, member, config)
   }
 
-  async repostManagementPanel(member: GuildMember): Promise<string> {
+  async getManagementPanelMessage(member: GuildMember): Promise<string> {
     const note = await this.getOwnedActiveNote(member)
     const channel = await this.getRequiredNoteChannel(member.guild, note)
 
-    await this.postManagementPanel(channel, member)
-
-    return `操作パネルを再投稿しました: <#${channel.id}>`
+    return `自分の操作パネルを表示しました: <#${channel.id}>`
   }
 
   async ensureCanUseNoteControls(member: GuildMember, channelId: string): Promise<void> {
@@ -377,7 +375,7 @@ export class NoteService {
   }
 
   async blockUser(member: GuildMember, channelId: string, targetUserId: string): Promise<string> {
-    const { channel, config } = await this.getOwnedActiveNoteInChannel(member, channelId)
+    const { channel, config } = await this.getOwnedActiveNoteForControl(member, channelId)
     await this.ensureBlockTarget(member, targetUserId, config)
 
     await channel.permissionOverwrites.edit(
@@ -398,7 +396,7 @@ export class NoteService {
   }
 
   async unblockUser(member: GuildMember, channelId: string, targetUserId: string): Promise<string> {
-    const { channel } = await this.getOwnedActiveNoteInChannel(member, channelId)
+    const { channel } = await this.getOwnedActiveNoteForControl(member, channelId)
 
     if (targetUserId === member.id) {
       throw new NoteUserError('自分自身は解除対象にできません。')
@@ -510,14 +508,6 @@ export class NoteService {
       throw error
     }
 
-    await this.postManagementPanel(channel, member)
-      .catch((error: unknown) => {
-        this.logger.warn(
-          { error, guildId: guild.id, channelId: channel.id },
-          'Failed to send note management panel'
-        )
-      })
-
     this.logger.info(
       { guildId: guild.id, userId: member.id, channelId: channel.id },
       'Created note'
@@ -526,27 +516,29 @@ export class NoteService {
     return `ノートを作成しました: <#${channel.id}>`
   }
 
-  private async getOwnedActiveNoteInChannel(
+  private async getOwnedActiveNoteForControl(
     member: GuildMember,
     channelId: string
   ): Promise<{ channel: TextChannel; config: NoteConfig; note: NoteChannel }> {
-    const [config, note] = await Promise.all([
+    const [config, noteInSourceChannel] = await Promise.all([
       this.getRequiredConfig(member.guild.id),
       this.repository.getNoteByChannel(channelId)
     ])
 
-    if (!note) {
-      throw new NoteUserError('この操作は自分のノート内で実行してください。')
+    if (noteInSourceChannel) {
+      if (noteInSourceChannel.userId !== member.id) {
+        throw new NoteUserError('このノートの管理操作は作成者だけが使えます。')
+      }
+
+      if (noteInSourceChannel.status === 'archived') {
+        throw new NoteUserError('このノートは閉じられています。復元してから操作してください。')
+      }
+
+      const channel = await this.getRequiredNoteChannel(member.guild, noteInSourceChannel)
+      return { channel, config, note: noteInSourceChannel }
     }
 
-    if (note.userId !== member.id) {
-      throw new NoteUserError('このノートの管理操作は作成者だけが使えます。')
-    }
-
-    if (note.status === 'archived') {
-      throw new NoteUserError('このノートは閉じられています。復元してから操作してください。')
-    }
-
+    const note = await this.getOwnedActiveNote(member)
     const channel = await this.getRequiredNoteChannel(member.guild, note)
     return { channel, config, note }
   }
@@ -585,13 +577,6 @@ export class NoteService {
     }
 
     return config
-  }
-
-  private async postManagementPanel(channel: TextChannel, member: GuildMember): Promise<void> {
-    await channel.send({
-      embeds: [createNoteManagementPanelEmbed(member)],
-      components: createNoteManagementActionRows()
-    })
   }
 
   private async postLobbyPanel(
@@ -895,7 +880,7 @@ export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRo
   }
 
   lines.push('')
-  lines.push('操作パネルが流れたときは、ロビーから再投稿できます。')
+  lines.push('自分の操作パネルは、ロビーからいつでも再表示できます。')
   lines.push('閉じたノートは、ロビーから復元できます。')
   lines.push('公開設定、コメント設定、ブロック、閉じる操作はノート内のパネルから行えます。')
 
@@ -937,7 +922,7 @@ export function createNoteCreatedContent(member: GuildMember): string {
     '日記、メモ、作業ログなどを自由にどうぞ。',
     '交流しやすいように、作成直後は公開・コメント可になっています。',
     '',
-    '操作パネルが流れたときは、ロビーから再投稿できます。',
+    '自分の操作パネルは、ロビーからいつでも再表示できます。',
     '閉じたノートはロビーから復元できます。'
   ].join('\n')
 }
