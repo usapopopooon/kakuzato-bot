@@ -271,8 +271,7 @@ describe('NoteService lobby panel', () => {
     const payload = edit.mock.calls[0]?.[0] as ManagementPanelPayload
     expect(payload.content).toBe('')
     expect(payload.allowedMentions).toEqual({ parse: [] })
-    expect(payload.embeds?.[0]?.toJSON().description).not.toContain('<@user-1>')
-    expect(payload.embeds?.[0]?.toJSON().description).toContain('note-owner さんのノートです。')
+    expect(payload.embeds?.[0]?.toJSON().description).toContain('<@user-1> さんのノートです。')
   })
 
   it('skips refresh without posting when no old management panel is found', async () => {

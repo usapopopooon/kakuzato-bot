@@ -779,12 +779,12 @@ export class NoteService {
     member: GuildMember,
     options: NotePanelRefreshOptions
   ): Promise<void> {
-    const mentionUser = !options.removeMention
+    const notifyUser = !options.removeMention
 
     await message.edit({
-      content: mentionUser ? `<@${member.id}>` : '',
-      embeds: [createNoteManagementPanelEmbed(member, { mentionUser })],
-      allowedMentions: mentionUser ? { users: [member.id] } : { parse: [] },
+      content: notifyUser ? `<@${member.id}>` : '',
+      embeds: [createNoteManagementPanelEmbed(member)],
+      allowedMentions: notifyUser ? { users: [member.id] } : { parse: [] },
       components: createNoteManagementActionRows()
     })
   }
@@ -1108,14 +1108,11 @@ export function createNoteLobbyPanelEmbed(config?: Pick<NoteConfig, 'creatorRole
     .setDescription(createNoteLobbyPanelContent(config))
 }
 
-export function createNoteManagementPanelEmbed(
-  member: GuildMember,
-  options: { mentionUser?: boolean } = {}
-): EmbedBuilder {
+export function createNoteManagementPanelEmbed(member: GuildMember): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(notePanelEmbedColor)
     .setTitle('ノート操作')
-    .setDescription(createNoteCreatedContent(member, options))
+    .setDescription(createNoteCreatedContent(member))
 }
 
 export function createNoteBlockUserPanelEmbed(): EmbedBuilder {
@@ -1132,14 +1129,9 @@ export function createNoteUnblockUserPanelEmbed(): EmbedBuilder {
     .setDescription('このノートでブロック解除するユーザーを選択してください。')
 }
 
-export function createNoteCreatedContent(
-  member: GuildMember,
-  options: { mentionUser?: boolean } = {}
-): string {
-  const ownerLabel = (options.mentionUser ?? true) ? `<@${member.id}>` : member.displayName
-
+export function createNoteCreatedContent(member: GuildMember): string {
   return [
-    `${ownerLabel} さんのノートです。`,
+    `<@${member.id}> さんのノートです。`,
     '',
     '日記、メモ、作業ログなどを自由にどうぞ。',
     '交流しやすいように、作成直後は公開・コメント可になっています。',
