@@ -16,6 +16,7 @@ import { createAutoModModule } from '../features/automod/autoMod.module'
 import { createBotActivityModule } from '../features/bot-activity/botActivity.module'
 import { createEventLogModule } from '../features/event-log/eventLog.module'
 import { createNoteModule } from '../features/note/note.module'
+import { createPostRoleModule } from '../features/post-role/postRole.module'
 import { createStickyModule } from '../features/sticky/sticky.module'
 import { createWelcomeModule } from '../features/welcome/welcome.module'
 import { createVoiceNotifyModule } from '../features/voice-notify/voiceNotify.module'
@@ -36,6 +37,7 @@ async function main(): Promise<void> {
     createBumpModule({ logger, prisma }),
     createWelcomeModule({ logger, prisma }),
     createNoteModule({ logger, prisma }),
+    createPostRoleModule({ logger, prisma }),
     createStickyModule({ logger, prisma }),
     createVoiceNotifyModule({ logger, prisma }),
     createEventLogModule({ logger, prisma })

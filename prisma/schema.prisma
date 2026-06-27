@@ -137,6 +137,18 @@ model StickyMessageConfig {
   @@index([guildId])
 }
 
+model PostRoleConfig {
+  channelId    String   @id
+  guildId      String
+  roleId       String
+  historyLimit Int      @default(500)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([guildId])
+  @@index([roleId])
+}
+
 model BumpConfig {
   guildId   String   @id
   channelId String
