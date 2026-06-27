@@ -21,8 +21,6 @@ import {
   defaultNoteChannelNamePrefix,
   createNoteBlockUserActionRows,
   createNoteBlockUserPanelEmbed,
-  createNoteManagementActionRows,
-  createNoteManagementPanelEmbed,
   createNoteUnblockUserPanelEmbed,
   createNoteUnblockUserActionRows,
   isNoteLobbyChannel,
@@ -30,6 +28,7 @@ import {
   noteBlockUserSelectCustomId,
   noteCloseCustomId,
   noteComponentCustomIdPrefix,
+  noteDeleteManagementPanelCustomId,
   noteOpenCustomId,
   noteRepostManagementPanelCustomId,
   noteRenameCustomId,
@@ -303,16 +302,6 @@ async function executeNoteComponent(
     return
   }
 
-  if (interaction.customId === noteOpenCustomId) {
-    await handleOpenButton(interaction, service)
-    return
-  }
-
-  if (interaction.customId === noteRepostManagementPanelCustomId) {
-    await handleRepostManagementPanelButton(interaction, service)
-    return
-  }
-
   if (interaction.customId === noteRenameCustomId) {
     await handleRenameButton(interaction, service)
     return
@@ -325,6 +314,11 @@ async function executeNoteComponent(
 
   if (interaction.customId === noteUnblockUserCustomId) {
     await handleUnblockUserButton(interaction, service)
+    return
+  }
+
+  if (interaction.customId === noteDeleteManagementPanelCustomId) {
+    await handleDeleteManagementPanelButton(interaction, service)
     return
   }
 
@@ -347,8 +341,16 @@ async function executeDeferredNoteButton(
   interaction: MessageComponentInteraction<'cached'>,
   service: NoteService
 ): Promise<string> {
+  if (interaction.customId === noteOpenCustomId) {
+    return service.openOrCreate(interaction.member)
+  }
+
   if (interaction.customId === noteRestoreCustomId) {
     return service.restore(interaction.member)
+  }
+
+  if (interaction.customId === noteRepostManagementPanelCustomId) {
+    return service.repostManagementPanel(interaction.member)
   }
 
   if (interaction.customId === noteToggleVisibilityCustomId) {
@@ -367,73 +369,6 @@ async function executeDeferredNoteButton(
   }
 
   return '不明なノート操作です。'
-}
-
-async function handleOpenButton(
-  interaction: MessageComponentInteraction<'cached'>,
-  service: NoteService
-): Promise<void> {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
-
-  try {
-    const content = await service.openOrCreate(interaction.member)
-    await editReplyWithOptionalManagementPanel(interaction, service, content)
-  } catch (error) {
-    if (error instanceof NoteUserError) {
-      await interaction.editReply({ content: error.userMessage })
-      return
-    }
-
-    throw error
-  }
-}
-
-async function handleRepostManagementPanelButton(
-  interaction: MessageComponentInteraction<'cached'>,
-  service: NoteService
-): Promise<void> {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral })
-
-  try {
-    const content = await service.getManagementPanelMessage(interaction.member)
-    await editReplyWithManagementPanel(interaction, content)
-  } catch (error) {
-    if (error instanceof NoteUserError) {
-      await interaction.editReply({ content: error.userMessage })
-      return
-    }
-
-    throw error
-  }
-}
-
-async function editReplyWithOptionalManagementPanel(
-  interaction: MessageComponentInteraction<'cached'>,
-  service: NoteService,
-  content: string
-): Promise<void> {
-  try {
-    await service.getManagementPanelMessage(interaction.member)
-    await editReplyWithManagementPanel(interaction, content)
-  } catch (error) {
-    if (error instanceof NoteUserError) {
-      await interaction.editReply({ content })
-      return
-    }
-
-    throw error
-  }
-}
-
-async function editReplyWithManagementPanel(
-  interaction: MessageComponentInteraction<'cached'>,
-  content: string
-): Promise<void> {
-  await interaction.editReply({
-    content,
-    embeds: [createNoteManagementPanelEmbed(interaction.member)],
-    components: createNoteManagementActionRows()
-  })
 }
 
 async function handleRenameButton(
@@ -483,6 +418,34 @@ async function handleUnblockUserButton(
     await interaction.reply({
       embeds: [createNoteUnblockUserPanelEmbed()],
       components: createNoteUnblockUserActionRows(),
+      flags: MessageFlags.Ephemeral
+    })
+  } catch (error) {
+    if (error instanceof NoteUserError) {
+      await interaction.reply({ content: error.userMessage, flags: MessageFlags.Ephemeral })
+      return
+    }
+
+    throw error
+  }
+}
+
+async function handleDeleteManagementPanelButton(
+  interaction: MessageComponentInteraction<'cached'>,
+  service: NoteService
+): Promise<void> {
+  try {
+    await service.ensureCanDeleteManagementPanel(interaction.member, interaction.channelId)
+
+    if (interaction.message.deletable) {
+      await interaction.message.delete()
+    } else {
+      await interaction.update({ components: [] })
+      return
+    }
+
+    await interaction.reply({
+      content: '操作パネルを削除しました。',
       flags: MessageFlags.Ephemeral
     })
   } catch (error) {

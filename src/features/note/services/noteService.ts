@@ -33,6 +33,7 @@ export const noteRepostManagementPanelCustomId = `${noteComponentCustomIdPrefix}
 export const noteToggleVisibilityCustomId = `${noteComponentCustomIdPrefix}toggle-visibility`
 export const noteToggleCommentsCustomId = `${noteComponentCustomIdPrefix}toggle-comments`
 export const noteCloseCustomId = `${noteComponentCustomIdPrefix}close`
+export const noteDeleteManagementPanelCustomId = `${noteComponentCustomIdPrefix}delete-management-panel`
 export const noteBlockUserCustomId = `${noteComponentCustomIdPrefix}block-user`
 export const noteUnblockUserCustomId = `${noteComponentCustomIdPrefix}unblock-user`
 export const noteBlockUserSelectCustomId = `${noteComponentCustomIdPrefix}block-user-select`
@@ -176,11 +177,13 @@ export class NoteService {
     return this.createNote(member.guild, member, config)
   }
 
-  async getManagementPanelMessage(member: GuildMember): Promise<string> {
+  async repostManagementPanel(member: GuildMember): Promise<string> {
     const note = await this.getOwnedActiveNote(member)
     const channel = await this.getRequiredNoteChannel(member.guild, note)
 
-    return `自分の操作パネルを表示しました: <#${channel.id}>`
+    await this.postManagementPanel(channel, member)
+
+    return `操作パネルを再投稿しました: <#${channel.id}>`
   }
 
   async ensureCanUseNoteControls(member: GuildMember, channelId: string): Promise<void> {
@@ -191,6 +194,22 @@ export class NoteService {
     }
 
     throw new NoteUserError('このノートの管理操作は作成者だけが使えます。')
+  }
+
+  async ensureCanDeleteManagementPanel(member: GuildMember, channelId: string): Promise<void> {
+    const note = await this.repository.getNoteByChannel(channelId)
+
+    if (!note) {
+      throw new NoteUserError('操作パネルの削除はノート内のパネルから実行してください。')
+    }
+
+    if (note.userId !== member.id) {
+      throw new NoteUserError('このノートの操作パネルは作成者だけが削除できます。')
+    }
+
+    if (note.status === 'archived') {
+      throw new NoteUserError('このノートは閉じられています。復元してから操作してください。')
+    }
   }
 
   async rename(member: GuildMember, requestedName: string): Promise<string> {
@@ -508,6 +527,13 @@ export class NoteService {
       throw error
     }
 
+    await this.postManagementPanel(channel, member).catch((error: unknown) => {
+      this.logger.warn(
+        { error, guildId: guild.id, channelId: channel.id },
+        'Failed to send note management panel'
+      )
+    })
+
     this.logger.info(
       { guildId: guild.id, userId: member.id, channelId: channel.id },
       'Created note'
@@ -577,6 +603,15 @@ export class NoteService {
     }
 
     return config
+  }
+
+  private async postManagementPanel(channel: TextChannel, member: GuildMember): Promise<void> {
+    await channel.send({
+      content: `<@${member.id}>`,
+      embeds: [createNoteManagementPanelEmbed(member)],
+      allowedMentions: { users: [member.id] },
+      components: createNoteManagementActionRows()
+    })
   }
 
   private async postLobbyPanel(
@@ -837,6 +872,10 @@ export function createNoteManagementActionRows(): ActionRowBuilder<ButtonBuilder
       new ButtonBuilder()
         .setCustomId(noteUnblockUserCustomId)
         .setLabel('ブロック解除')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(noteDeleteManagementPanelCustomId)
+        .setLabel('このパネルを削除')
         .setStyle(ButtonStyle.Secondary)
     )
   ]
@@ -880,7 +919,7 @@ export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRo
   }
 
   lines.push('')
-  lines.push('自分の操作パネルは、ロビーからいつでも再表示できます。')
+  lines.push('操作パネルは、自分のノートチャンネルに再投稿できます。')
   lines.push('閉じたノートは、ロビーから復元できます。')
   lines.push('公開設定、コメント設定、ブロック、閉じる操作はノート内のパネルから行えます。')
 
@@ -922,7 +961,8 @@ export function createNoteCreatedContent(member: GuildMember): string {
     '日記、メモ、作業ログなどを自由にどうぞ。',
     '交流しやすいように、作成直後は公開・コメント可になっています。',
     '',
-    '自分の操作パネルは、ロビーからいつでも再表示できます。',
+    '操作パネルは、ロビーからこのノートに再投稿できます。',
+    '不要になった操作パネルは、このパネルのボタンで削除できます。',
     '閉じたノートはロビーから復元できます。'
   ].join('\n')
 }

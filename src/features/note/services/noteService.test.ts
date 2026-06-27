@@ -49,14 +49,13 @@ describe('note service helpers', () => {
 
     expect(content).toContain('自分のノートをひとつ持てます。\n\n日記')
     expect(content).toContain('コメントできます。\n\n<@&role-1>')
-    expect(content).toContain('作れます。\n\n自分の操作パネル')
+    expect(content).toContain('作れます。\n\n操作パネル')
   })
 
   it('explains member note command hints in the lobby panel', () => {
     const content = createNoteLobbyPanelContent()
 
-    expect(content).toContain('自分の操作パネル')
-    expect(content).toContain('ロビーからいつでも再表示')
+    expect(content).toContain('操作パネルは、自分のノートチャンネルに再投稿できます。')
     expect(content).toContain('閉じたノート')
     expect(content).toContain('ロビーから復元')
     expect(content).toContain('公開設定、コメント設定、ブロック、閉じる操作')
@@ -86,6 +85,7 @@ describe('note service helpers', () => {
 
     expect(JSON.stringify(serializedRows)).toContain('ユーザーをブロック')
     expect(JSON.stringify(serializedRows)).toContain('ブロック解除')
+    expect(JSON.stringify(serializedRows)).toContain('このパネルを削除')
     expect(JSON.stringify(serializedRows)).toContain('閉じる')
   })
 
@@ -96,8 +96,8 @@ describe('note service helpers', () => {
     expect(embed.title).toBe('ノート操作')
     expect(embed.description).toContain('<@user-1> さんのノートです。')
     expect(embed.description).toContain('作成直後は公開・コメント可')
-    expect(embed.description).toContain('自分の操作パネル')
-    expect(embed.description).toContain('ロビーからいつでも再表示')
+    expect(embed.description).toContain('ロビーからこのノートに再投稿')
+    expect(embed.description).toContain('このパネルのボタンで削除')
     expect(embed.description).toContain('閉じたノートはロビーから復元')
     expect(embed.description).not.toContain('このパネルでできること')
   })
@@ -151,9 +151,9 @@ describe('NoteService lobby panel', () => {
     expect(updatePanelMessage).toHaveBeenCalledWith(config.guildId, 'message-3')
   })
 
-  it('resolves the note management panel message without posting in the note channel', async () => {
+  it('reposts the note management panel in the owner note with a user mention', async () => {
     const note = createNoteChannel()
-    const send = vi.fn()
+    const send = vi.fn().mockResolvedValue({ id: 'panel-1' })
     const textChannel = {
       id: note.channelId,
       type: ChannelType.GuildText,
@@ -169,12 +169,19 @@ describe('NoteService lobby panel', () => {
       channels: { fetch }
     })
 
-    await expect(service.getManagementPanelMessage(member)).resolves.toBe(
-      `自分の操作パネルを表示しました: <#${note.channelId}>`
+    await expect(service.repostManagementPanel(member)).resolves.toBe(
+      `操作パネルを再投稿しました: <#${note.channelId}>`
     )
 
     expect(fetch).toHaveBeenCalledWith(note.channelId)
-    expect(send).not.toHaveBeenCalled()
+    expect(send).toHaveBeenCalledTimes(1)
+    const payload = send.mock.calls[0]?.[0] as ManagementPanelPayload
+    expect(payload.content).toBe('<@user-1>')
+    expect(payload.allowedMentions).toEqual({ users: ['user-1'] })
+    expect(payload.embeds).toHaveLength(1)
+    expect(payload.embeds?.[0]?.toJSON().title).toBe('ノート操作')
+    expect(payload.embeds?.[0]?.toJSON().description).toContain('<@user-1>')
+    expect(payload.components).toHaveLength(2)
   })
 
   it('uses the owner note for block operations invoked from the lobby panel', async () => {
@@ -499,6 +506,13 @@ function createNoteChannel(): NoteChannel {
 type LobbyPanelPayload = {
   embeds?: { toJSON(): { description?: string; title?: string } }[]
   allowedMentions?: { parse: string[] }
+  components?: unknown[]
+}
+
+type ManagementPanelPayload = {
+  content?: string
+  embeds?: { toJSON(): { description?: string; title?: string } }[]
+  allowedMentions?: { users: string[] }
   components?: unknown[]
 }
 
