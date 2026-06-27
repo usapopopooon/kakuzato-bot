@@ -29,6 +29,7 @@ export const noteComponentCustomIdPrefix = 'note:'
 export const noteOpenCustomId = `${noteComponentCustomIdPrefix}open`
 export const noteRestoreCustomId = `${noteComponentCustomIdPrefix}restore`
 export const noteRenameCustomId = `${noteComponentCustomIdPrefix}rename`
+export const noteRepostManagementPanelCustomId = `${noteComponentCustomIdPrefix}repost-management-panel`
 export const noteToggleVisibilityCustomId = `${noteComponentCustomIdPrefix}toggle-visibility`
 export const noteToggleCommentsCustomId = `${noteComponentCustomIdPrefix}toggle-comments`
 export const noteCloseCustomId = `${noteComponentCustomIdPrefix}close`
@@ -40,7 +41,7 @@ export const noteUnblockUserSelectCustomId = `${noteComponentCustomIdPrefix}unbl
 export const defaultNoteCategoryBaseName = 'ノート'
 export const defaultNoteChannelNamePrefix = 'note'
 export const noteMaxChannelsPerCategory = 50
-const noteLobbyPanelEmbedColor = 0x85e7ad
+const notePanelEmbedColor = 0x85e7ad
 const discordUnknownChannelCode = 10003
 
 type NoteSetupInput = {
@@ -173,6 +174,15 @@ export class NoteService {
     }
 
     return this.createNote(member.guild, member, config)
+  }
+
+  async repostManagementPanel(member: GuildMember): Promise<string> {
+    const note = await this.getOwnedActiveNote(member)
+    const channel = await this.getRequiredNoteChannel(member.guild, note)
+
+    await this.postManagementPanel(channel, member)
+
+    return `操作パネルを再投稿しました: <#${channel.id}>`
   }
 
   async ensureCanUseNoteControls(member: GuildMember, channelId: string): Promise<void> {
@@ -500,11 +510,7 @@ export class NoteService {
       throw error
     }
 
-    await channel
-      .send({
-        content: createNoteCreatedContent(member),
-        components: createNoteManagementActionRows()
-      })
+    await this.postManagementPanel(channel, member)
       .catch((error: unknown) => {
         this.logger.warn(
           { error, guildId: guild.id, channelId: channel.id },
@@ -579,6 +585,13 @@ export class NoteService {
     }
 
     return config
+  }
+
+  private async postManagementPanel(channel: TextChannel, member: GuildMember): Promise<void> {
+    await channel.send({
+      embeds: [createNoteManagementPanelEmbed(member)],
+      components: createNoteManagementActionRows()
+    })
   }
 
   private async postLobbyPanel(
@@ -802,6 +815,10 @@ export function createNoteLobbyActionRows(): ActionRowBuilder<ButtonBuilder>[] {
       new ButtonBuilder()
         .setCustomId(noteRenameCustomId)
         .setLabel('ノート名を変える')
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(noteRepostManagementPanelCustomId)
+        .setLabel('操作パネルを再投稿')
         .setStyle(ButtonStyle.Secondary)
     )
   ]
@@ -868,7 +885,8 @@ export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRo
   const lines = [
     '自分のノートをひとつ持てます。',
     '日記、メモ、作業ログ、近況、好きなものの置き場にどうぞ。',
-    '最初は公開されるので、ほかの人のノートにも気軽にコメントできます。'
+    '最初は公開されるので、ほかの人のノートにも気軽にコメントできます。',
+    '操作パネルが流れたときはロビーから再投稿できます。'
   ]
 
   if (config?.creatorRoleId) {
@@ -882,9 +900,30 @@ export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRo
 
 export function createNoteLobbyPanelEmbed(config?: Pick<NoteConfig, 'creatorRoleId'>): EmbedBuilder {
   return new EmbedBuilder()
-    .setColor(noteLobbyPanelEmbedColor)
+    .setColor(notePanelEmbedColor)
     .setTitle('ノート')
     .setDescription(createNoteLobbyPanelContent(config))
+}
+
+export function createNoteManagementPanelEmbed(member: GuildMember): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(notePanelEmbedColor)
+    .setTitle('ノート操作')
+    .setDescription(createNoteCreatedContent(member))
+}
+
+export function createNoteBlockUserPanelEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(notePanelEmbedColor)
+    .setTitle('ユーザーをブロック')
+    .setDescription('このノートからブロックするユーザーを選択してください。')
+}
+
+export function createNoteUnblockUserPanelEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(notePanelEmbedColor)
+    .setTitle('ブロック解除')
+    .setDescription('このノートでブロック解除するユーザーを選択してください。')
 }
 
 export function createNoteCreatedContent(member: GuildMember): string {

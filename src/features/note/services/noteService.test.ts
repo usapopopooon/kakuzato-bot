@@ -4,6 +4,7 @@ import type { NoteChannel, NoteConfig, NoteRepository } from '../repositories/no
 import {
   createDefaultNoteChannelName,
   createNoteManagementActionRows,
+  createNoteManagementPanelEmbed,
   createNoteLobbyPanelContent,
   createNoteLobbyPanelEmbed,
   NoteService,
@@ -59,6 +60,16 @@ describe('note service helpers', () => {
 
     expect(JSON.stringify(serializedRows)).toContain('ユーザーをブロック')
     expect(JSON.stringify(serializedRows)).toContain('ブロック解除')
+    expect(JSON.stringify(serializedRows)).toContain('閉じる')
+  })
+
+  it('renders the note management panel as an embed', () => {
+    const member = createMember('guild-1', 'user-1', {})
+    const embed = createNoteManagementPanelEmbed(member).toJSON()
+
+    expect(embed.title).toBe('ノート操作')
+    expect(embed.description).toContain('<@user-1> さんのノートです。')
+    expect(embed.description).toContain('作成直後は公開・コメント可')
   })
 })
 
@@ -108,6 +119,38 @@ describe('NoteService lobby panel', () => {
     expect(payload.allowedMentions).toEqual({ parse: [] })
     expect(payload.embeds?.[0]?.toJSON().description).toContain('<@&role-1>')
     expect(updatePanelMessage).toHaveBeenCalledWith(config.guildId, 'message-3')
+  })
+
+  it('reposts the note management panel in the owner note', async () => {
+    const note = createNoteChannel()
+    const send = vi.fn().mockResolvedValue({ id: 'panel-1' })
+    const textChannel = {
+      id: note.channelId,
+      type: ChannelType.GuildText,
+      send
+    }
+    const fetch = vi.fn().mockResolvedValue(textChannel)
+    const repository = {
+      getNoteByUser: vi.fn().mockResolvedValue(note),
+      deleteNoteByUser: vi.fn()
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+    const member = createMember(note.guildId, note.userId, {
+      channels: { fetch }
+    })
+
+    await expect(service.repostManagementPanel(member)).resolves.toBe(
+      `操作パネルを再投稿しました: <#${note.channelId}>`
+    )
+
+    expect(fetch).toHaveBeenCalledWith(note.channelId)
+    expect(send).toHaveBeenCalledTimes(1)
+    const payload = send.mock.calls[0]?.[0] as PanelPayload
+    expect(payload).not.toHaveProperty('content')
+    expect(payload.embeds).toHaveLength(1)
+    expect(payload.embeds?.[0]?.toJSON().title).toBe('ノート操作')
+    expect(payload.embeds?.[0]?.toJSON().description).toContain('<@user-1>')
+    expect(payload.components).toHaveLength(2)
   })
 })
 
@@ -395,6 +438,11 @@ function createNoteChannel(): NoteChannel {
 type LobbyPanelPayload = {
   embeds?: { toJSON(): { description?: string; title?: string } }[]
   allowedMentions?: { parse: string[] }
+  components?: unknown[]
+}
+
+type PanelPayload = {
+  embeds?: { toJSON(): { description?: string; title?: string } }[]
   components?: unknown[]
 }
 

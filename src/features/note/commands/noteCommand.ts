@@ -20,6 +20,8 @@ import {
   defaultNoteCategoryBaseName,
   defaultNoteChannelNamePrefix,
   createNoteBlockUserActionRows,
+  createNoteBlockUserPanelEmbed,
+  createNoteUnblockUserPanelEmbed,
   createNoteUnblockUserActionRows,
   isNoteLobbyChannel,
   noteBlockUserCustomId,
@@ -27,6 +29,7 @@ import {
   noteCloseCustomId,
   noteComponentCustomIdPrefix,
   noteOpenCustomId,
+  noteRepostManagementPanelCustomId,
   noteRenameCustomId,
   noteRestoreCustomId,
   noteToggleCommentsCustomId,
@@ -340,6 +343,10 @@ async function executeDeferredNoteButton(
     return service.restore(interaction.member)
   }
 
+  if (interaction.customId === noteRepostManagementPanelCustomId) {
+    return service.repostManagementPanel(interaction.member)
+  }
+
   if (interaction.customId === noteToggleVisibilityCustomId) {
     await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
     return service.toggleVisibility(interaction.member)
@@ -382,7 +389,7 @@ async function handleBlockUserButton(
   try {
     await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
     await interaction.reply({
-      content: 'このノートからブロックするユーザーを選択してください。',
+      embeds: [createNoteBlockUserPanelEmbed()],
       components: createNoteBlockUserActionRows(),
       flags: MessageFlags.Ephemeral
     })
@@ -403,7 +410,7 @@ async function handleUnblockUserButton(
   try {
     await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
     await interaction.reply({
-      content: 'このノートでブロック解除するユーザーを選択してください。',
+      embeds: [createNoteUnblockUserPanelEmbed()],
       components: createNoteUnblockUserActionRows(),
       flags: MessageFlags.Ephemeral
     })
