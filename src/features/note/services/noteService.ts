@@ -884,15 +884,17 @@ export function createNoteUnblockUserActionRows(): ActionRowBuilder<UserSelectMe
 export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRoleId'>): string {
   const lines = [
     '自分のノートをひとつ持てます。',
+    '',
     '日記、メモ、作業ログ、近況、好きなものの置き場にどうぞ。',
-    '最初は公開されるので、ほかの人のノートにも気軽にコメントできます。',
-    '操作パネルが流れたときはロビーから再投稿できます。'
+    '最初は公開されるので、ほかの人のノートにも気軽にコメントできます。'
   ]
 
   if (config?.creatorRoleId) {
+    lines.push('')
     lines.push(`<@&${config.creatorRoleId}> を持っている人がノートを作れます。`)
   }
 
+  lines.push('')
   lines.push('名前変更、非公開化、コメント停止、ブロック、閉じる操作はノート内のパネルから行えます。')
 
   return lines.join('\n')

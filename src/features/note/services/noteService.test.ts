@@ -43,6 +43,14 @@ describe('note service helpers', () => {
     )
   })
 
+  it('separates lobby panel sections with blank lines', () => {
+    const content = createNoteLobbyPanelContent({ creatorRoleId: 'role-1' })
+
+    expect(content).toContain('自分のノートをひとつ持てます。\n\n日記')
+    expect(content).toContain('コメントできます。\n\n<@&role-1>')
+    expect(content).toContain('作れます。\n\n名前変更')
+  })
+
   it('renders the lobby panel as an embed', () => {
     const embed = createNoteLobbyPanelEmbed({ creatorRoleId: 'role-1' }).toJSON()
 
