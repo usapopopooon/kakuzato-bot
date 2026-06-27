@@ -895,7 +895,9 @@ export function createNoteLobbyPanelContent(config?: Pick<NoteConfig, 'creatorRo
   }
 
   lines.push('')
-  lines.push('名前変更、非公開化、コメント停止、ブロック、閉じる操作はノート内のパネルから行えます。')
+  lines.push('操作パネルが流れたときは、ロビーから再投稿できます。')
+  lines.push('閉じたノートは、ロビーから復元できます。')
+  lines.push('公開設定、コメント設定、ブロック、閉じる操作はノート内のパネルから行えます。')
 
   return lines.join('\n')
 }
@@ -931,8 +933,12 @@ export function createNoteUnblockUserPanelEmbed(): EmbedBuilder {
 export function createNoteCreatedContent(member: GuildMember): string {
   return [
     `<@${member.id}> さんのノートです。`,
+    '',
     '日記、メモ、作業ログなどを自由にどうぞ。',
-    '交流しやすいように、作成直後は公開・コメント可になっています。'
+    '交流しやすいように、作成直後は公開・コメント可になっています。',
+    '',
+    '操作パネルが流れたときは、ロビーから再投稿できます。',
+    '閉じたノートはロビーから復元できます。'
   ].join('\n')
 }
 

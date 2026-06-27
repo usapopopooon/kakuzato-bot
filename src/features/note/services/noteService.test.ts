@@ -48,7 +48,18 @@ describe('note service helpers', () => {
 
     expect(content).toContain('自分のノートをひとつ持てます。\n\n日記')
     expect(content).toContain('コメントできます。\n\n<@&role-1>')
-    expect(content).toContain('作れます。\n\n名前変更')
+    expect(content).toContain('作れます。\n\n操作パネル')
+  })
+
+  it('explains member note command hints in the lobby panel', () => {
+    const content = createNoteLobbyPanelContent()
+
+    expect(content).toContain('操作パネルが流れたとき')
+    expect(content).toContain('ロビーから再投稿')
+    expect(content).toContain('閉じたノート')
+    expect(content).toContain('ロビーから復元')
+    expect(content).toContain('公開設定、コメント設定、ブロック、閉じる操作')
+    expect(content).not.toContain('ロビーのボタンでできること')
   })
 
   it('renders the lobby panel as an embed', () => {
@@ -78,6 +89,10 @@ describe('note service helpers', () => {
     expect(embed.title).toBe('ノート操作')
     expect(embed.description).toContain('<@user-1> さんのノートです。')
     expect(embed.description).toContain('作成直後は公開・コメント可')
+    expect(embed.description).toContain('操作パネルが流れたとき')
+    expect(embed.description).toContain('ロビーから再投稿')
+    expect(embed.description).toContain('閉じたノートはロビーから復元')
+    expect(embed.description).not.toContain('このパネルでできること')
   })
 })
 
