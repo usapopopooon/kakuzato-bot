@@ -12,7 +12,7 @@ export type WelcomeSendableChannel = {
   send(options: {
     content: string
     files: AttachmentBuilder[]
-    allowedMentions: { users: string[] }
+    allowedMentions: { parse: ('everyone' | 'roles' | 'users')[] }
   }): Promise<unknown>
 }
 
@@ -76,7 +76,6 @@ export class WelcomeService {
 
     try {
       const templateInput = {
-        userId: member.id,
         username: member.user.username,
         displayName: member.displayName,
         guildName: member.guild.name,
@@ -100,7 +99,7 @@ export class WelcomeService {
       await channel.send({
         content,
         files: [attachment],
-        allowedMentions: { users: [member.id] }
+        allowedMentions: { parse: [] }
       })
       this.logger.info({ guildId: member.guild.id, userId: member.id }, 'Sent welcome banner')
       return true

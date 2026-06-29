@@ -49,9 +49,13 @@ describe('WelcomeService', () => {
 
     await expect(service.send(member)).resolves.toBe(true)
 
-    const options = send.mock.calls[0]?.[0] as { content: string }
+    const options = send.mock.calls[0]?.[0] as {
+      content: string
+      allowedMentions: { parse: string[] }
+    }
     expect(options.content.length).toBeLessThanOrEqual(discordMessageMaxLength)
     expect(options.content.endsWith('...')).toBe(true)
+    expect(options.allowedMentions).toEqual({ parse: [] })
     expect(bannerService.create).toHaveBeenCalledWith(
       expect.objectContaining({
         headlineText: 'Alice さんが召喚されました！'

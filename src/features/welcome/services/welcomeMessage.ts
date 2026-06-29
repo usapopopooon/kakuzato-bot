@@ -1,5 +1,4 @@
 export type WelcomeMessageInput = {
-  userId: string
   username: string
   displayName: string
   guildName: string
@@ -7,7 +6,7 @@ export type WelcomeMessageInput = {
 }
 
 const placeholders = {
-  mention: (input: WelcomeMessageInput) => `<@${input.userId}>`,
+  mention: (input: WelcomeMessageInput) => `@${input.displayName}`,
   username: (input: WelcomeMessageInput) => input.username,
   displayName: (input: WelcomeMessageInput) => input.displayName,
   guildName: (input: WelcomeMessageInput) => input.guildName,
