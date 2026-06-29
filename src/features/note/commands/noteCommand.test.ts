@@ -7,7 +7,12 @@ import {
   type ModalSubmitInteraction
 } from 'discord.js'
 import { describe, expect, it, vi } from 'vitest'
-import { noteCloseCustomId, noteEditTopicCustomId, type NoteService } from '../services/noteService'
+import {
+  noteCloseCustomId,
+  noteEditTopicCustomId,
+  noteRenameCustomId,
+  type NoteService
+} from '../services/noteService'
 import {
   createNoteCommand,
   createNoteComponentHandler,
@@ -91,11 +96,59 @@ describe('note component handler', () => {
     expect(editReply).toHaveBeenCalledWith({ content: 'ノートを閉じました。' })
   })
 
-  it('shows a topic edit modal from note controls', async () => {
+  it('shows a rename modal with the current note name', async () => {
     const member = { id: 'user-1' }
     const ensureCanUseNoteControls = vi.fn().mockResolvedValue(undefined)
+    const getNoteEditDefaults = vi.fn().mockResolvedValue({
+      name: '作業ログ',
+      topic: '今日の作業ログ'
+    })
     const service = {
-      ensureCanUseNoteControls
+      ensureCanUseNoteControls,
+      getNoteEditDefaults
+    } as unknown as NoteService
+    const showModal = vi.fn<(modal: ModalBuilder) => Promise<void>>().mockResolvedValue(undefined)
+    const handler = createNoteComponentHandler(service)
+
+    await handler.execute({
+      inCachedGuild: () => true,
+      isUserSelectMenu: () => false,
+      isButton: () => true,
+      customId: noteRenameCustomId,
+      member,
+      channelId: 'note-channel-1',
+      showModal
+    } as unknown as MessageComponentInteraction)
+
+    expect(ensureCanUseNoteControls).toHaveBeenCalledWith(member, 'note-channel-1')
+    expect(getNoteEditDefaults).toHaveBeenCalledWith(member, 'note-channel-1')
+    expect(showModal).toHaveBeenCalledTimes(1)
+    expect(showModal.mock.calls[0]?.[0]?.toJSON()).toMatchObject({
+      custom_id: 'note-modal:rename',
+      title: 'ノート名を変更',
+      components: [
+        {
+          components: [
+            {
+              custom_id: 'note-rename-name',
+              value: '作業ログ'
+            }
+          ]
+        }
+      ]
+    })
+  })
+
+  it('shows a topic edit modal with the current topic', async () => {
+    const member = { id: 'user-1' }
+    const ensureCanUseNoteControls = vi.fn().mockResolvedValue(undefined)
+    const getNoteEditDefaults = vi.fn().mockResolvedValue({
+      name: '作業ログ',
+      topic: '今日の作業ログ'
+    })
+    const service = {
+      ensureCanUseNoteControls,
+      getNoteEditDefaults
     } as unknown as NoteService
     const showModal = vi.fn<(modal: ModalBuilder) => Promise<void>>().mockResolvedValue(undefined)
     const handler = createNoteComponentHandler(service)
@@ -111,10 +164,21 @@ describe('note component handler', () => {
     } as unknown as MessageComponentInteraction)
 
     expect(ensureCanUseNoteControls).toHaveBeenCalledWith(member, 'note-channel-1')
+    expect(getNoteEditDefaults).toHaveBeenCalledWith(member, 'note-channel-1')
     expect(showModal).toHaveBeenCalledTimes(1)
     expect(showModal.mock.calls[0]?.[0]?.toJSON()).toMatchObject({
       custom_id: 'note-modal:topic',
-      title: 'トピックを変更'
+      title: 'トピックを変更',
+      components: [
+        {
+          components: [
+            {
+              custom_id: 'note-topic-content',
+              value: '今日の作業ログ'
+            }
+          ]
+        }
+      ]
     })
   })
 })

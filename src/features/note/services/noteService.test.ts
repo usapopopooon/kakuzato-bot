@@ -24,21 +24,22 @@ import {
 } from './noteService'
 
 describe('note service helpers', () => {
-  it('normalizes requested note channel names for Discord text channels', () => {
-    expect(normalizeCustomNoteChannelName('  My Note!!  ')).toBe('my-note')
-    expect(normalizeCustomNoteChannelName('作業ログ その1')).toBe('作業ログ-その1')
-    expect(normalizeCustomNoteChannelName('---')).toBeUndefined()
+  it('keeps requested note channel names mostly intact', () => {
+    expect(normalizeCustomNoteChannelName('  My Note!! 📝  ')).toBe('My Note!! 📝')
+    expect(normalizeCustomNoteChannelName('作業ログ その1🐰')).toBe('作業ログ その1🐰')
+    expect(normalizeCustomNoteChannelName('---')).toBe('---')
+    expect(normalizeCustomNoteChannelName('   ')).toBeUndefined()
   })
 
   it('creates default note names from the display name', () => {
-    expect(createDefaultNoteChannelName('note', 'うさぽ さん', '1234567890')).toBe(
-      'うさぽ-さんのノート'
+    expect(createDefaultNoteChannelName('note', 'うさぽ さん🐰', '1234567890')).toBe(
+      'うさぽ さん🐰のノート'
     )
-    expect(createDefaultNoteChannelName('note', 'USAPO', '1234567890')).toBe('usapoのノート')
+    expect(createDefaultNoteChannelName('note', 'USAPO', '1234567890')).toBe('USAPOのノート')
   })
 
-  it('falls back when the display name has no usable channel name characters', () => {
-    expect(createDefaultNoteChannelName('note', '!!!', '1234567890')).toBe('note-567890')
+  it('falls back when the display name is blank', () => {
+    expect(createDefaultNoteChannelName('note', '   ', '1234567890')).toBe('note-567890')
   })
 
   it('normalizes note panel refresh history limits', () => {
@@ -431,6 +432,55 @@ describe('NoteService lobby panel', () => {
       expect.objectContaining({ ViewChannel: false, SendMessages: false }),
       expect.objectContaining({ reason: `Note user blocked by ${member.user.tag}` })
     )
+  })
+
+  it('loads current note edit defaults from a note control channel', async () => {
+    const note = createNoteChannel()
+    const textChannel = {
+      ...createTextChannel(note.channelId, vi.fn(), vi.fn()),
+      name: '作業ログ',
+      topic: '今日の作業ログ'
+    }
+    const repository = {
+      getNoteByChannel: vi.fn().mockResolvedValue(note),
+      deleteNoteByUser: vi.fn()
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+    const member = createMember(note.guildId, note.userId, {
+      channels: {
+        fetch: vi.fn().mockResolvedValue(textChannel)
+      }
+    })
+
+    await expect(service.getNoteEditDefaults(member, note.channelId)).resolves.toEqual({
+      name: '作業ログ',
+      topic: '今日の作業ログ'
+    })
+  })
+
+  it('loads current note edit defaults from the owner note when invoked from the lobby', async () => {
+    const note = createNoteChannel()
+    const textChannel = {
+      ...createTextChannel(note.channelId, vi.fn(), vi.fn()),
+      name: '自分のノート',
+      topic: null
+    }
+    const fetch = vi.fn().mockResolvedValue(textChannel)
+    const repository = {
+      getNoteByChannel: vi.fn().mockResolvedValue(undefined),
+      getNoteByUser: vi.fn().mockResolvedValue(note),
+      deleteNoteByUser: vi.fn()
+    } as unknown as NoteRepository
+    const service = new NoteService(repository, createLoggerMock())
+    const member = createMember(note.guildId, note.userId, {
+      channels: { fetch }
+    })
+
+    await expect(service.getNoteEditDefaults(member, 'lobby-1')).resolves.toEqual({
+      name: '自分のノート',
+      topic: undefined
+    })
+    expect(fetch).toHaveBeenCalledWith(note.channelId)
   })
 
   it('updates the owned note channel topic from a management panel', async () => {

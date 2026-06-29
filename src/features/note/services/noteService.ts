@@ -78,6 +78,11 @@ type NoteStatus = {
   archivedNotes: number
 }
 
+export type NoteEditDefaults = {
+  name: string
+  topic?: string
+}
+
 export type NotePanelRefreshResult = {
   total: number
   updated: number
@@ -333,6 +338,18 @@ export class NoteService {
 
     if (note.status === 'archived') {
       throw new NoteUserError('このノートは閉じられています。復元してから操作してください。')
+    }
+  }
+
+  async getNoteEditDefaults(
+    member: GuildMember,
+    sourceChannelId: string
+  ): Promise<NoteEditDefaults> {
+    const { channel } = await this.getOwnedActiveNoteChannelForControl(member, sourceChannelId)
+
+    return {
+      name: channel.name,
+      topic: channel.topic ?? undefined
     }
   }
 
@@ -689,10 +706,19 @@ export class NoteService {
     member: GuildMember,
     channelId: string
   ): Promise<{ channel: TextChannel; config: NoteConfig; note: NoteChannel }> {
-    const [config, noteInSourceChannel] = await Promise.all([
+    const [config, target] = await Promise.all([
       this.getRequiredConfig(member.guild.id),
-      this.repository.getNoteByChannel(channelId)
+      this.getOwnedActiveNoteChannelForControl(member, channelId)
     ])
+
+    return { ...target, config }
+  }
+
+  private async getOwnedActiveNoteChannelForControl(
+    member: GuildMember,
+    channelId: string
+  ): Promise<{ channel: TextChannel; note: NoteChannel }> {
+    const noteInSourceChannel = await this.repository.getNoteByChannel(channelId)
 
     if (noteInSourceChannel) {
       if (noteInSourceChannel.userId !== member.id) {
@@ -704,12 +730,12 @@ export class NoteService {
       }
 
       const channel = await this.getRequiredNoteChannel(member.guild, noteInSourceChannel)
-      return { channel, config, note: noteInSourceChannel }
+      return { channel, note: noteInSourceChannel }
     }
 
     const note = await this.getOwnedActiveNote(member)
     const channel = await this.getRequiredNoteChannel(member.guild, note)
-    return { channel, config, note }
+    return { channel, note }
   }
 
   private async ensureBlockTarget(
@@ -1251,14 +1277,7 @@ export function createDefaultNoteChannelName(
 }
 
 export function normalizeCustomNoteChannelName(value: string): string | undefined {
-  const normalized = value
-    .normalize('NFKC')
-    .toLowerCase()
-    .replace(/[\s_]+/gu, '-')
-    .replace(/[^\p{Letter}\p{Number}-]+/gu, '-')
-    .replace(/-+/gu, '-')
-    .replace(/^-|-$/gu, '')
-    .slice(0, 100)
+  const normalized = value.trim().slice(0, 100)
 
   return normalized.length > 0 ? normalized : undefined
 }

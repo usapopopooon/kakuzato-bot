@@ -477,7 +477,8 @@ async function handleRenameButton(
 ): Promise<void> {
   try {
     await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
-    await interaction.showModal(createNoteRenameModal())
+    const defaults = await service.getNoteEditDefaults(interaction.member, interaction.channelId)
+    await interaction.showModal(createNoteRenameModal(defaults.name))
   } catch (error) {
     if (error instanceof NoteUserError) {
       await interaction.reply({ content: error.userMessage, flags: MessageFlags.Ephemeral })
@@ -494,7 +495,8 @@ async function handleTopicButton(
 ): Promise<void> {
   try {
     await service.ensureCanUseNoteControls(interaction.member, interaction.channelId)
-    await interaction.showModal(createNoteTopicModal())
+    const defaults = await service.getNoteEditDefaults(interaction.member, interaction.channelId)
+    await interaction.showModal(createNoteTopicModal(defaults.topic))
   } catch (error) {
     if (error instanceof NoteUserError) {
       await interaction.reply({ content: error.userMessage, flags: MessageFlags.Ephemeral })
@@ -672,36 +674,37 @@ async function updateNoteTopicFromModal(
   )
 }
 
-function createNoteRenameModal(): ModalBuilder {
+function createNoteRenameModal(currentName: string): ModalBuilder {
+  const input = new TextInputBuilder()
+    .setCustomId(noteRenameInputId)
+    .setLabel('新しいノート名')
+    .setStyle(TextInputStyle.Short)
+    .setRequired(true)
+    .setMaxLength(100)
+    .setValue(currentName)
+
   return new ModalBuilder()
     .setCustomId(noteRenameModalCustomId)
     .setTitle('ノート名を変更')
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId(noteRenameInputId)
-          .setLabel('新しいノート名')
-          .setStyle(TextInputStyle.Short)
-          .setRequired(true)
-          .setMaxLength(100)
-      )
-    )
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input))
 }
 
-function createNoteTopicModal(): ModalBuilder {
+function createNoteTopicModal(currentTopic?: string): ModalBuilder {
+  const input = new TextInputBuilder()
+    .setCustomId(noteTopicInputId)
+    .setLabel('新しいチャンネルトピック')
+    .setStyle(TextInputStyle.Paragraph)
+    .setRequired(false)
+    .setMaxLength(1024)
+
+  if (currentTopic) {
+    input.setValue(currentTopic)
+  }
+
   return new ModalBuilder()
     .setCustomId(noteTopicModalCustomId)
     .setTitle('トピックを変更')
-    .addComponents(
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId(noteTopicInputId)
-          .setLabel('新しいチャンネルトピック')
-          .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false)
-          .setMaxLength(1024)
-      )
-    )
+    .addComponents(new ActionRowBuilder<TextInputBuilder>().addComponents(input))
 }
 
 function canBotManageNoteLobby(
