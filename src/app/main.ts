@@ -12,6 +12,7 @@ import {
 } from '../platform/discord/registerCommands'
 import { registerBotModules } from '../platform/discord/registerBotModules'
 import { createLogger } from '../platform/logger/logger'
+import { createAutoReactionModule } from '../features/auto-reaction/autoReaction.module'
 import { createAutoModModule } from '../features/automod/autoMod.module'
 import { createBotActivityModule } from '../features/bot-activity/botActivity.module'
 import { createEventLogModule } from '../features/event-log/eventLog.module'
@@ -34,6 +35,7 @@ async function main(): Promise<void> {
   const modules = [
     createBotActivityModule({ logger, prisma }),
     createAutoModModule({ logger, prisma }),
+    createAutoReactionModule({ logger, prisma }),
     createBumpModule({ logger, prisma }),
     createWelcomeModule({ logger, prisma }),
     createNoteModule({ logger, prisma }),

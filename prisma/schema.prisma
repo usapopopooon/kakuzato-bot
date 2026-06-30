@@ -149,6 +149,16 @@ model PostRoleConfig {
   @@index([roleId])
 }
 
+model AutoReactionConfig {
+  channelId String   @id
+  guildId   String
+  emojis    String[] @default([])
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([guildId])
+}
+
 model BumpConfig {
   guildId   String   @id
   channelId String
